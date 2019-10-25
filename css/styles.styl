@@ -39,13 +39,15 @@ header
 
 main
 	position: relative
-	width: calc(960px)
+	width: 720px
 	max-width: 90%
 	margin: 1rem
+	--ratio: 56.25%
+	--ratio: 74.92%
 	&::before
 		content: ''
 		display: block
-		padding-bottom: 56.25%
+		padding-bottom: var(--ratio)
 	&::after
 		content: ''
 		pointer-events: none
@@ -69,10 +71,11 @@ input[type=file]
 		height: 100%
 		font-size: 1.35rem
 		text-transform: uppercase
-		transition: 2s background-color
+		transition: 0.2s background-color
 		&.drag
-			background-color: red
-		background-color: rgba(white, 0.2)
+			background-color: rgba(green, 0.5)
+		&:hover
+			background-color: rgba(white, 0.2)
 		main:not(.state-upload) &
 			display: none
 		strong
