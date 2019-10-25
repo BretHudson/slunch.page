@@ -2,6 +2,8 @@ let main;
 
 let uploadForm;
 
+let image, background;
+
 let page;
 let hue, last = null;
 const change = timestamp => {
@@ -34,29 +36,28 @@ const drawImage = () => {
 	ctx.drawImage(image, x, y, w, h);
 };
 
-let image;
+const loadImage = (src, onload) => {
+	const image = new Image();
+	if (onload !== undefined)
+		image.onload = onload;
+	image.src = src;
+	return image;
+};
+
+const loadLunchImage = src => {
+	image = loadImage(src, drawImage);
+	main.classList.remove('state-upload');
+	main.classList.add('state-edit');
+};
+
 let canvas, ctx;
 const readFile = file => {
 	const reader = new FileReader();
 	reader.onload = e => {
-		image = new Image();
-		image.onload = drawImage;
-		image.src = event.target.result;
-		main.classList.remove('state-upload');
-		main.classList.add('state-edit');
+		loadLunchImage(e.target.result);
 	};
 	reader.readAsDataURL(file);
 };
-
-/*
-drag
-dragstart
-dragend
-dragover
-dragenter
-dragleave
-drop
-*/
 
 const noDefault = e => {
 	e.preventDefault();
@@ -82,6 +83,8 @@ window.addEventListener('DOMContentLoaded', e => {
 	main = document.querySelector('main');
 	
 	uploadForm = document.querySelector('label[for="image-upload"]');
+	
+	background = loadImage('img/background.jpg');
 	
 	// Override defaults
 	document.body.addEventListener('drag', noDefault);
@@ -113,7 +116,41 @@ window.addEventListener('DOMContentLoaded', e => {
 	imageUpload.addEventListener('change', e => readFile(e.target.files[0]), false);
 });
 
+const drawTextWithShadow = (str, x, y, size) => {
+	ctx.font = `${size}px "Bubblegum Sans"`;
+	ctx.fillStyle = '#C5C5C5';
+	const offset = size / 12;
+	ctx.fillText(str, x + offset, y + offset);
+	
+	
+	ctx.fillStyle = 'white';
+	ctx.fillText(str, x, y);
+}
+
 const renderCanvas = t => {
+	ctx.fillStyle = 'black';
+	ctx.fillRect(0, 0, WIDTH, HEIGHT);
+	
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	
+	if (background) {
+		ctx.drawImage(background, 0, 0, WIDTH, HEIGHT);
+	}
+	
+	if (image)
+		drawImage();
+	
+	// Draw text
+	const text1 = document.querySelector('input[name=text-top]').value;
+	const text2 = document.querySelector('input[name=text-bottom]').value;
+	
+	const CX = WIDTH >> 1;
+	const CY = HEIGHT >> 1;
+	
+	drawTextWithShadow(text1, CX - 200, CY - 100, 100);
+	drawTextWithShadow(text2, CX + 200, CY + 100, 50);
+	
 	window.requestAnimationFrame(renderCanvas);
 };
 window.requestAnimationFrame(renderCanvas);
