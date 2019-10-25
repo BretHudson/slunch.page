@@ -120,6 +120,31 @@ const drawTextWithShadow = (str, x, y, size, angle) => {
 	ctx.restore();
 }
 
+const _drawTextWithShadow = textObj => {
+	const { str, transform } = textObj;
+	const { x, y, xDrag, yDrag, size, angle } = transform;
+	const [ CX, CY ] = [ WIDTH >> 1, HEIGHT >> 1 ]
+	drawTextWithShadow(str, x + xDrag + CX, y + yDrag + CY, size, angle);
+};
+
+const customText = {
+	str: 'mytext',
+	transform: {
+		x: 0,
+		y: 0,
+		xDrag: 0,
+		yDrag: 0,
+		size: 100,
+		angle: 0,
+		get width() {
+			return 0;
+		},
+		get height() {
+			return 0;
+		}
+	}
+};
+
 let lastRender;
 let drag = { x: 0, y: 0 };
 const updateBegin = dt => {
@@ -145,10 +170,18 @@ const updateBegin = dt => {
 	}
 };
 
+const selectedItem = customText;
 const update = dt => {
+	const selectedTransform = selectedItem.transform;
+	if (mouse.held === true) {
+		selectedTransform.xDrag = mouse.xDrag;
+		selectedTransform.yDrag = mouse.yDrag;
+	}
+	
 	if (mouse.released === true) {
-		drag.x += mouse.xDrag;
-		drag.y += mouse.yDrag;
+		selectedTransform.x += mouse.xDrag;
+		selectedTransform.y += mouse.yDrag;
+		selectedTransform.xDrag = selectedTransform.yDrag = 0;
 	}
 };
 
@@ -174,12 +207,14 @@ const render = dt => {
 	const text1 = document.querySelector('input[name=text-top]').value;
 	const text2 = document.querySelector('input[name=text-bottom]').value;
 	
-	const CX = drag.x + (WIDTH >> 1) + ((mouse.held === true) ? mouse.xDrag : 0);
-	const CY = drag.y + (HEIGHT >> 1) + ((mouse.held === true) ? mouse.yDrag : 0);
+	const CX = drag.x + (WIDTH >> 1);
+	const CY = drag.y + (HEIGHT >> 1);
 	
 	const angle = 10;
 	drawTextWithShadow(text1, CX - 230, CY - 120, 100, -angle);
 	drawTextWithShadow(text2, CX + 230, CY + 140, 50, angle);
+	
+	_drawTextWithShadow(customText);
 };
 
 const loop = t => {
