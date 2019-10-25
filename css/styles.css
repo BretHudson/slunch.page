@@ -6,6 +6,7 @@ html {
   height: 100%;
   -ms-text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
+  font-family: Helvetica;
 }
 @media (max-width: 767.98px) {
   html {
@@ -28,6 +29,10 @@ html {
   }
 }
 body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   background-color: #000;
   color: #fff;
   margin: 0;
@@ -35,13 +40,71 @@ body {
   width: 100%;
   height: 100%;
 }
-body {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
 header {
   font-family: 'Fascinate Inline', cursive;
   font-size: 4rem;
   font-style: italic;
+  text-shadow: 0.1em 0.1em 0.1em var(--color);
+  margin-bottom: 2rem;
+}
+main {
+  position: relative;
+  width: calc(960px);
+  max-width: 90%;
+  margin: 1rem;
+}
+main::before {
+  content: '';
+  display: block;
+  padding-bottom: 56.25%;
+}
+main::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  left: -1rem;
+  right: -1rem;
+  top: -1rem;
+  bottom: -1rem;
+  border: 4px dashed var(--color);
+}
+input[type=file] {
+  display: none;
+}
+input[type=file] + label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  position: absolute;
+  user-select: none;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+  transition: 2s background-color;
+  background-color: rgba(255,255,255,0.2);
+}
+input[type=file] + label.drag {
+  background-color: #f00;
+}
+main:not(.state-upload) input[type=file] + label {
+  display: none;
+}
+input[type=file] + label strong {
+  display: inline-block;
+}
+canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #333;
+}
+main:not(.state-edit) canvas {
+  display: none;
 }
