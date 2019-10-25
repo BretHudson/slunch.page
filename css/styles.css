@@ -49,14 +49,16 @@ header {
 }
 main {
   position: relative;
-  width: calc(960px);
+  width: 720px;
   max-width: 90%;
   margin: 1rem;
+  --ratio: 56.25%;
+  --ratio: 74.92%;
 }
 main::before {
   content: '';
   display: block;
-  padding-bottom: 56.25%;
+  padding-bottom: var(--ratio);
 }
 main::after {
   content: '';
@@ -85,11 +87,13 @@ input[type=file] + label {
   height: 100%;
   font-size: 1.35rem;
   text-transform: uppercase;
-  transition: 2s background-color;
-  background-color: rgba(255,255,255,0.2);
+  transition: 0.2s background-color;
 }
 input[type=file] + label.drag {
-  background-color: #f00;
+  background-color: rgba(0,128,0,0.5);
+}
+input[type=file] + label:hover {
+  background-color: rgba(255,255,255,0.2);
 }
 main:not(.state-upload) input[type=file] + label {
   display: none;
