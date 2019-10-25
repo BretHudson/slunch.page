@@ -85,6 +85,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	uploadForm = document.querySelector('label[for="image-upload"]');
 	
 	background = loadImage('img/background.jpg');
+	// loadLunchImage('img/slunch.jpg');
 	
 	// Override defaults
 	document.body.addEventListener('drag', noDefault);
@@ -124,18 +125,33 @@ window.addEventListener('DOMContentLoaded', e => {
 	});
 });
 
-const drawTextWithShadow = (str, x, y, size) => {
-	ctx.font = `${size}px "Bubblegum Sans"`;
-	ctx.fillStyle = '#C5C5C5';
+const drawTextWithShadow = (str, x, y, size, angle) => {
 	const offset = size / 12;
-	ctx.fillText(str, x + offset, y + offset);
 	
+	ctx.font = `${size}px "Bubblegum Sans"`;
+	
+	ctx.save();
+	ctx.translate(x, y);
+	ctx.rotate(angle * Math.PI / 180);
+	ctx.translate(-x, -y);
+		
+	ctx.fillStyle = '#C5C5C5';
+	ctx.fillText(str, x + offset, y + offset);
 	
 	ctx.fillStyle = 'white';
 	ctx.fillText(str, x, y);
+	
+	ctx.restore();
 }
 
+let lastRender;
 const renderCanvas = t => {
+	if (lastRender === undefined)
+		lastRender = t;
+	
+	const dt = t - lastRender;
+	lastRender = t;
+	
 	ctx.fillStyle = 'black';
 	ctx.fillRect(0, 0, WIDTH, HEIGHT);
 	
@@ -156,8 +172,10 @@ const renderCanvas = t => {
 	const CX = WIDTH >> 1;
 	const CY = HEIGHT >> 1;
 	
-	drawTextWithShadow(text1, CX - 200, CY - 100, 100);
-	drawTextWithShadow(text2, CX + 200, CY + 100, 50);
+	const angle = 10;
+	drawTextWithShadow(text1, CX - 230, CY - 120, 100, -angle);
+	drawTextWithShadow(text2, CX + 230, CY + 140, 50, angle);
+	
 	
 	window.requestAnimationFrame(renderCanvas);
 };
