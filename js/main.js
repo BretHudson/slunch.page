@@ -114,6 +114,14 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	const imageUpload = document.getElementById('image-upload');
 	imageUpload.addEventListener('change', e => readFile(e.target.files[0]), false);
+	
+	const button = document.querySelector('button');
+	button.addEventListener('click', e => {
+		const link = document.createElement('a');
+		link.download = 'slunch.jpg';
+		link.href = canvas.toDataURL("image/jpeg");
+		link.click();
+	});
 });
 
 const drawTextWithShadow = (str, x, y, size) => {
