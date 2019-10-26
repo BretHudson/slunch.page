@@ -51,6 +51,7 @@ class V2 {
 	}
 	
 	set(x = 0, y = 0) {
+		// console.log('in set', { x, y });
 		this.x = x;
 		this.y = y;
 		return this;
@@ -127,12 +128,34 @@ class V2 {
 	}
 }
 
+const getMethods = (obj) => {
+	const properties = new Set();
+	let currentObj = obj;
+	do {
+		Object.getOwnPropertyNames(currentObj).map(item => properties.add(item));
+	} while ((currentObj = Object.getPrototypeOf(currentObj)));
+	return [...properties.keys()].filter(item => typeof obj[item] === 'function');
+}
+
 const _rectTempPos = new V2();
-const _rectTempPos2 = new V2();
+const _rectTempPos2 = new V2()
 class Rect {
 	constructor(x = 0, y = 0, w = 0, h = 0) {
 		this.pos = new V2();
 		this.size = new V2();
+		
+		const vectors = [ this.pos, this.size ];
+		vectors.forEach(obj => {
+			getMethods(obj)
+				.slice(1, -6)
+				.forEach(m => {
+					const func = obj[m].bind(obj);
+					obj[m] = (...args) => {
+						func(...args);
+						this.recalculatePoints();
+					};
+				});
+		});
 		
 		this.corners = Array.from({ length: 4 }).map(v => new V2());
 		this.topLeft = this.corners[0];
@@ -571,7 +594,6 @@ const update = dt => {
 	
 	const testRect = customText.transform.rect;
 	if (mouse.pressed) {
-		V2.compareDistance
 		if (testRect.containsV2(mouse.pos)) {
 			draggingRect = true;
 		}
@@ -612,8 +634,22 @@ const render = dt => {
 		Draw.line(0, 0, C.x, C.y, 'red', 5);
 	}
 	
+	{
+		const { str, transform } = selectedItem;
+		const { pos, drag, size, angle, width, height } = transform;
+		
+		tempPos.setV2(pos).addV2(drag);
+		
+		Draw.rect(tempPos.x, tempPos.y, width, height, 'red', true, {
+			centered: true
+		});
+	}
+	
+	for (let i = itemsInScene.length; i--; ) {
+		drawTextItem(itemsInScene[i]);
+	}
+	
 	const testRect = customText.transform.rect;
-	console.log(testRect.size);
 	
 	{
 		const { topLeft, topRight, bottomRight, bottomLeft } = testRect;
@@ -635,21 +671,6 @@ const render = dt => {
 	Draw.circle(mouse.pos.x, mouse.pos.y, 15, 'blue');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
-	
-	{
-		const { str, transform } = selectedItem;
-		const { pos, drag, size, angle, width, height } = transform;
-		
-		tempPos.setV2(pos).addV2(drag);
-		
-		Draw.rect(tempPos.x, tempPos.y, width, height, 'red', true, {
-			centered: true
-		});
-	}
-	
-	for (let i = itemsInScene.length; i--; ) {
-		drawTextItem(itemsInScene[i]);
-	}
 	
 	// if (draggingRect === true)
 	{
