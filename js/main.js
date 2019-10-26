@@ -67,21 +67,17 @@ class V2 {
 		return this;
 	}
 	
-	rotateDeg(deg) {
-		const rad = deg * Math.PI / 180;
-		const cos = Math.cos(rad);
-		const sin = Math.sin(rad);
-		this.x = this.x * cos - this.y * sin;
-		this.y = this.x * sin + this.y * cos;
-		return this;
-	}
-	
 	rotateRad(rad) {
 		const cos = Math.cos(rad);
 		const sin = Math.sin(rad);
-		this.x = this.x * cos - this.y * sin;
+		const x = this.x * cos - this.y * sin;
 		this.y = this.x * sin + this.y * cos;
+		this.x = x;
 		return this;
+	}
+	
+	rotateDeg(deg) {
+		return this.rotateRad(deg * Math.PI / 180);
 	}
 	
 	compareAngles(other) {
@@ -108,6 +104,74 @@ class V2 {
 	}
 }
 
+const Draw = {
+	tempPos: new V2(0, 0),
+	centerPos: new V2(0, 0),
+	drawPos: new V2(0, 0),
+	rect: (x, y, w, h, color = 'magenta', fill = true, options = {}) => {
+		const { centered } = options;
+		const angle = options.angle || 0;
+		
+		const offset = Draw.tempPos.set(w >> 1, h >> 1);
+		const centerPos = Draw.centerPos.set(x, y);
+		const drawPos = Draw.drawPos.setV2(centerPos);
+		if (centered === true)
+			drawPos.subtractV2(offset);
+		
+		if (angle !== 0) {
+			ctx.save();
+			ctx.translate(centerPos.x, centerPos.y);
+			ctx.rotate(angle * Math.PI / 180);
+			ctx.translate(-centerPos.x, -centerPos.y);
+		}
+		
+		if (fill === true) {
+			ctx.fillStyle = color;
+			ctx.fillRect(drawPos.x, drawPos.y, w, h);
+		} else {
+			ctx.strokeStyle = color;
+			ctx.strokeRect(drawPos.x, drawPos.y, w, h);
+		}
+		
+		if (angle !== 0) {
+			ctx.restore();
+		}
+	},
+	circle: (x, y, radius, color = 'magenta') => {
+		ctx.fillStyle = color;
+		ctx.beginPath();
+		ctx.arc(x, y, radius, 0, 360);
+		ctx.fill();
+	},
+	text: (x, y, size, str, color = 'magenta', options = {}) => {
+		setFont(size);
+		
+		const stroke = options.stroke || 0;
+		const angle = options.angle || 0;
+		
+		if (angle !== 0) {
+			ctx.save();
+			ctx.translate(x, y);
+			ctx.rotate(angle * Math.PI / 180);
+			ctx.translate(-x, -y);
+		}
+		
+		setFont(size);
+		if (stroke > 0) {
+			ctx.lineWidth = stroke;
+			ctx.strokeStyle = color;
+			ctx.strokeText(str, x, y);
+		} else {
+			ctx.fillStyle = color;
+			ctx.fillText(str, x, y);
+		}
+		
+		if (angle !== 0) {
+			ctx.restore();
+		}
+	}
+};
+
 let mainElem;
 let uploadForm;
 let image, background;
@@ -117,7 +181,6 @@ let canvasScreenSize = new V2(0, 0);
 
 const tempPos = new V2(0, 0);
 const tempPos2 = new V2(0, 0);
-const drawPos = new V2(0, 0);
 
 let page;
 let hue, last = null;
@@ -214,22 +277,14 @@ const addCanvasEvents = () => {
 const setFont = size => ctx.font = `${size}px "Bubblegum Sans"`;
 
 const drawTextWithShadow = (str, x, y, size, angle) => {
-	const offset = size / 12;
+	const offset = tempPos.set(size / 12, size / 12);
 	
-	setFont(size);
+	if (angle !== 0)
+		offset.rotateDeg(angle);
 	
-	ctx.save();
-	ctx.translate(x, y);
-	ctx.rotate(angle * Math.PI / 180);
-	ctx.translate(-x, -y);
-	
-	ctx.fillStyle = '#C5C5C5';
-	ctx.fillText(str, x + offset, y + offset);
-	
-	ctx.fillStyle = 'white';
-	ctx.fillText(str, x, y);
-	
-	ctx.restore();
+	const options = { angle };
+	Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
+	Draw.text(x, y, size, str, '#fff', options);
 }
 
 const canvasSize = new V2(0, 0);
@@ -247,12 +302,12 @@ const setCanvasSize = (w, h) => {
 	canvasCenter.set(w >> 1, h >> 1);
 };
 
-const _drawTextWithShadow = textObj => {
+const drawTextItem = textObj => {
 	const { str, transform } = textObj;
 	const { pos, drag, size, angle } = transform;
 	
-	tempPos.setV2(pos).addV2(drag).addV2(canvasCenter);
-	drawTextWithShadow(str, tempPos.x, tempPos.y, size, angle);
+	const drawPos = tempPos.setV2(pos).addV2(drag).addV2(canvasCenter);
+	drawTextWithShadow(str, drawPos.x, drawPos.y, size, angle);
 };
 
 const ITEMS = {
@@ -337,8 +392,7 @@ const updateEnd = dt => {
 };
 
 const render = dt => {
-	ctx.fillStyle = 'black';
-	ctx.fillRect(0, 0, canvasSize.x, canvasSize.y);
+	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black');
 	
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
@@ -350,6 +404,9 @@ const render = dt => {
 	if (image)
 		drawImage();
 	
+	Draw.circle(mouse.pos.x, mouse.pos.y, 50, 'blue');
+	Draw.circle(mouse.pos.x, mouse.pos.y, 20, 'white');
+	
 	// Draw text
 	const text1 = document.querySelector('input[name=text-top]').value;
 	const text2 = document.querySelector('input[name=text-bottom]').value;
@@ -359,36 +416,17 @@ const render = dt => {
 	drawTextWithShadow(text2, canvasCenter.x + 230, canvasCenter.y + 140, 50, angle);
 	
 	{
-		const { str, transform } = customText;
+		const { str, transform } = selectedItem;
 		const { pos, drag, size, angle, width, height } = transform;
 		
-		const offset = tempPos;
-		const centerPos = tempPos2;
+		tempPos.setV2(canvasCenter).addV2(pos).addV2(drag);
 		
-		offset.set(width >> 1, height >> 1);
-		centerPos.setV2(canvasCenter).addV2(pos).addV2(drag);
-		drawPos.setV2(centerPos).subtractV2(offset);
-		
-		ctx.save();
-		ctx.translate(centerPos.x, centerPos.y);
-		ctx.rotate(angle * Math.PI / 180);
-		ctx.translate(-centerPos.x, -centerPos.y);
-		ctx.fillStyle = 'red';
-		ctx.fillRect(drawPos.x, drawPos.y, width, height);
-		ctx.restore();
+		Draw.rect(tempPos.x, tempPos.y, width, height, 'red', true, {
+			centered: true
+		});
 	}
 	
-	ctx.fillStyle = 'black';
-	ctx.beginPath();
-	ctx.arc(mouse.pos.x, mouse.pos.y, 50, 0, 360);
-	ctx.fill();
-	
-	ctx.fillStyle = 'white';
-	ctx.beginPath();
-	ctx.arc(mouse.pos.x, mouse.pos.y, 20, 0, 360);
-	ctx.fill();
-	
-	_drawTextWithShadow(customText);
+	drawTextItem(customText);
 };
 
 const loop = t => {
