@@ -3,7 +3,7 @@ Element.prototype.on = function(type, func, capture) {
 };
 
 class V2 {
-	constructor(x, y) {
+	constructor(x = 0, y = 0) {
 		this.x = x;
 		this.y = y;
 	}
@@ -22,6 +22,12 @@ class V2 {
 	
 	static subtract(v1, v2) {
 		return new V2(v1.x - v2.x, v1.y - v2.y);
+	}
+	
+	static project(v1, v2) {
+		const dot = V2.dot(v1, v2);
+		const magSq = v1.magnitudeSq;
+		return V2.clone(v1).multiplyScalar(dot / magSq);
 	}
 	
 	addV2(other) {
@@ -45,6 +51,12 @@ class V2 {
 	setV2(v) {
 		this.x = v.x;
 		this.y = v.y;
+		return this;
+	}
+	
+	invert() {
+		this.x = -this.x;
+		this.y = -this.y;
 		return this;
 	}
 	
@@ -88,9 +100,12 @@ class V2 {
 		return Math.sqrt(((other.x - this.x) * (other.x - this.x)) + ((other.y - this.y) * (other.y - this.y)));
 	}
 	
-	// TODO(bret): Might want to only calculate this when x/y are changed...
 	get magnitude() {
 		return Math.sqrt(this.x * this.x + this.y * this.y);
+	}
+	
+	get magnitudeSq() {
+		return this.x * this.x + this.y * this.y;
 	}
 	
 	get normalized() {
@@ -105,9 +120,17 @@ class V2 {
 }
 
 const Draw = {
-	tempPos: new V2(0, 0),
-	centerPos: new V2(0, 0),
-	drawPos: new V2(0, 0),
+	tempPos: new V2(),
+	centerPos: new V2(),
+	drawPos: new V2(),
+	line: (x, y, x2, y2, color = 'magenta', options = {}) => {
+		ctx.strokeStyle = color;
+		ctx.lineWidth  = 15;
+		ctx.beginPath();
+		ctx.moveTo(x, y);
+		ctx.lineTo(x2, y2);
+		ctx.stroke();
+	},
 	rect: (x, y, w, h, color = 'magenta', fill = true, options = {}) => {
 		const { centered } = options;
 		const angle = options.angle || 0;
@@ -175,11 +198,11 @@ let mainElem;
 let uploadForm;
 let image, background;
 let canvas, ctx;
-let canvasScreenPos = new V2(0, 0);
-let canvasScreenSize = new V2(0, 0);
+let canvasScreenPos = new V2();
+let canvasScreenSize = new V2();
 
-const tempPos = new V2(0, 0);
-const tempPos2 = new V2(0, 0);
+const tempPos = new V2();
+const tempPos2 = new V2();
 
 const measureDiv = document.createElement('span');
 
@@ -245,12 +268,12 @@ const addDragDropEvents = () => {
 };
 
 let mouse = {
-	posRaw: new V2(0, 0),
-	startRaw: new V2(0, 0),
-	dragRaw: new V2(0, 0),
-	pos: new V2(0, 0),
-	start: new V2(0, 0),
-	drag: new V2(0, 0),
+	posRaw: new V2(),
+	startRaw: new V2(),
+	dragRaw: new V2(),
+	pos: new V2(),
+	start: new V2(),
+	drag: new V2(),
 	state: 0,
 	get pressed() { return this.state === 3; },
 	get held() { return (this.state & 2) !== 0; },
@@ -288,8 +311,8 @@ const drawTextWithShadow = (str, x, y, size, angle) => {
 	Draw.text(x, y, size, str, '#fff', options);
 }
 
-const canvasSize = new V2(0, 0);
-const canvasCenter = new V2(0, 0);
+const canvasSize = new V2();
+const canvasCenter = new V2();
 const setCanvasSize = (w, h) => {
 	canvas.width = w;
 	canvas.height = h;
@@ -326,7 +349,7 @@ const createText = (str, x, y, size) => {
 		transform: {
 			parent: null,
 			pos: new V2(x, y),
-			drag: new V2(0, 0),
+			drag: new V2(),
 			_size: 0,
 			_width: 0,
 			_height: 0,
@@ -431,6 +454,21 @@ const render = dt => {
 	
 	for (let i = itemsInScene.length; i--; ) {
 		drawTextItem(itemsInScene[i]);
+	}
+	
+	{
+		const A = new V2(500, 0);
+		const B = V2.clone(mouse.pos).subtractV2(canvasCenter);
+		const C = V2.project(A, B);
+		
+		A.addV2(canvasCenter);
+		B.addV2(canvasCenter);
+		C.addV2(canvasCenter);
+		
+		const { x, y } = canvasCenter;
+		Draw.line(x, y, A.x, A.y, 'blue');
+		Draw.line(x, y, B.x, B.y, 'red');
+		Draw.line(x, y, C.x, C.y, 'lime');
 	}
 };
 
