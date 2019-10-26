@@ -349,13 +349,12 @@ const createText = (str, x, y, size) => {
 	text.transform.parent = text;
 	text.transform.size = size;
 	
-	text.transform.angle = 15;
-	
 	return text;
 };
 
 let customText;
 let selectedItem = customText;
+const itemsInScene = [];
 
 let lastRender;
 const updateBegin = dt => {
@@ -380,6 +379,11 @@ const update = dt => {
 	if (mouse.held === true) {
 		selectedTransform.drag.setV2(mouse.drag);
 	}
+	
+	const text1 = document.querySelector('input[name=text-top]').value;
+	const text2 = document.querySelector('input[name=text-bottom]').value;
+	itemsInScene[0].str = text1;
+	itemsInScene[1].str = text2;
 	
 	if (mouse.released === true) {
 		selectedTransform.pos.addV2(mouse.drag);
@@ -407,14 +411,6 @@ const render = dt => {
 	Draw.circle(mouse.pos.x, mouse.pos.y, 50, 'blue');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 20, 'white');
 	
-	// Draw text
-	const text1 = document.querySelector('input[name=text-top]').value;
-	const text2 = document.querySelector('input[name=text-bottom]').value;
-	
-	const angle = 10;
-	drawTextWithShadow(text1, canvasCenter.x - 230, canvasCenter.y - 120, 100, -angle);
-	drawTextWithShadow(text2, canvasCenter.x + 230, canvasCenter.y + 140, 50, angle);
-	
 	{
 		const { str, transform } = selectedItem;
 		const { pos, drag, size, angle, width, height } = transform;
@@ -426,7 +422,9 @@ const render = dt => {
 		});
 	}
 	
-	drawTextItem(customText);
+	for (let i = itemsInScene.length; i--; ) {
+		drawTextItem(itemsInScene[i]);
+	}
 };
 
 const loop = t => {
@@ -476,7 +474,19 @@ window.addEventListener('DOMContentLoaded', e => {
 		link.click();
 	});
 	
+	const angle = 10;
+	
+	const text1 = createText('SLUNCH', -230, -120, 100);
+	text1.transform.angle = -angle;
+	
+	const text2 = createText('is served', 230, 140, 50);
+	text2.transform.angle = angle;
+	
 	customText = createText('x', 0, 0, 100);
+	customText.transform.angle = 15;
+	
+	itemsInScene.push(text1, text2, customText);
+	
 	selectedItem = customText;
 	
 	window.requestAnimationFrame(loop);
