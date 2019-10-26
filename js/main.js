@@ -30,6 +30,10 @@ class V2 {
 		return V2.clone(v1).multiplyScalar(dot / magSq);
 	}
 	
+	static getSide(start, end, point) {
+		return ((end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x));
+	}
+	
 	addV2(other) {
 		this.x += other.x;
 		this.y += other.y;
@@ -119,13 +123,115 @@ class V2 {
 	}
 }
 
+const _rectTempPos = new V2();
+const _rectTempPos2 = new V2();
+class Rect {
+	constructor(x = 0, y = 0, w = 0, h = 0) {
+		this._pos = new V2();
+		this._size = new V2();
+		
+		this.corners = Array.from({ length: 4 }).map(v => new V2());
+		this.topLeft = this.corners[0];
+		this.topRight = this.corners[1];
+		this.bottomRight = this.corners[2];
+		this.bottomLeft = this.corners[3];
+		
+		this.angle = 0;
+		
+		this.x = x;
+		this.y = y;
+		this.w = w;
+		this.h = h;
+	}
+	
+	recalculatePoints() {
+		const baseOffset = _rectTempPos.set(this.w >> 1, this.h >> 1);
+		const offset = _rectTempPos2.setV2(baseOffset);
+		this.topLeft.set(-offset.x, -offset.y);
+		this.topRight.set(offset.x, -offset.y);
+		this.bottomRight.set(offset.x, offset.y);
+		this.bottomLeft.set(-offset.x, offset.y);
+		for (let i = 0; i < 4; ++i) {
+			if (this.angle !== 0) {
+				this.corners[i].rotateDeg(this.angle);
+			}
+			this.corners[i].addV2(this._pos);
+		}
+	}
+	
+	rotate(deg) {
+		this.angle += deg;
+	}
+	
+	setPos(x, y) {
+		this.x = x;
+		this.y = y;
+	}
+	
+	setSize(w, h) {
+		this.w = w;
+		this.h = h;
+	}
+	
+	set(x, y, w, h) {
+		this.setPos(x, y);
+		this.setSize(w, h);
+	}
+	
+	move(x, y) {
+		this.x += x;
+		this.y += y;
+	}
+	
+	moveV2(v) {
+		this.move(v.x, v.y);
+	}
+	
+	set x(val) {
+		this._pos.x = val;
+		this.recalculatePoints();
+	}
+	
+	set y(val) {
+		this._pos.y = val;
+		this.recalculatePoints();
+	}
+	
+	set w(val) {
+		this._size.x = val;
+		this.recalculatePoints();
+	}
+	
+	set h(val) {
+		this._size.y = val;
+		this.recalculatePoints();
+	}
+	
+	set angle(val) {
+		this._angle = val;
+		this.recalculatePoints();
+	}
+	
+	get x() { return this._pos.x; }
+	get y() { return this._pos.y; }
+	get w() { return this._size.x; }
+	get h() { return this._size.y; }
+	get angle() { return this._angle; }
+	
+	get left() { return this.topLeft.x; }
+	get top() { return this.topLeft.y; }
+	get right() { return this.bottomRight.x; }
+	get bottom() { return this.bottomRight.y; }
+};
+
 const Draw = {
 	tempPos: new V2(),
 	centerPos: new V2(),
 	drawPos: new V2(),
-	line: (x, y, x2, y2, color = 'magenta', options = {}) => {
+	line: (x, y, x2, y2, color = 'magenta', lineWidth = 1) => {
+		
 		ctx.strokeStyle = color;
-		ctx.lineWidth  = 15;
+		ctx.lineWidth  = lineWidth;
 		ctx.beginPath();
 		ctx.moveTo(x, y);
 		ctx.lineTo(x2, y2);
@@ -214,28 +320,37 @@ const change = timestamp => {
 	const dt = timestamp - last;
 	last = timestamp;
 	hue += dt / 10;
-	document.body.style.setProperty('--color', `hsl(${Math.round(hue)}, 100%, 50%)`);
+	hue -= Math.floor(hue / 360) * 360;
+	document.body.style.setProperty('--color', `hsl(${Math.round(hue)}, 100%, 40%)`);
 	window.requestAnimationFrame(change);
 };
 
 //const [ INIT_WIDTH, INIT_HEIGHT ] = [ 960, 540 ];
 const [ INIT_WIDTH, INIT_HEIGHT ] = [ 1300, 974 ];
 const defaultAspectRatio = 16 / 9;
-const drawImage = () => {
-	const aspectRatio = image.width / image.height;
-	let x, y, w, h;
-	if (aspectRatio > defaultAspectRatio) {
-		w = canvasSize.x;
-		h = canvasSize.x / aspectRatio;
-		x = 0;
-		y = (canvasSize.y - h) >> 1;
-	} else {
-		w = canvasSize.y * aspectRatio;
-		h = canvasSize.y;
-		x = (canvasSize.x - w) >> 1;
-		y = 0;
+const drawBackground = () => {
+	if (background) {
+		ctx.drawImage(background, 0, 0, canvasSize.x, canvasSize.y);
 	}
-	ctx.drawImage(image, x, y, w, h);
+};
+
+const drawImage = () => {
+	if (image) {
+		const aspectRatio = image.width / image.height;
+		let x, y, w, h;
+		if (aspectRatio > defaultAspectRatio) {
+			w = canvasSize.x;
+			h = canvasSize.x / aspectRatio;
+			x = 0;
+			y = (canvasSize.y - h) >> 1;
+		} else {
+			w = canvasSize.y * aspectRatio;
+			h = canvasSize.y;
+			x = (canvasSize.x - w) >> 1;
+			y = 0;
+		}
+		ctx.drawImage(image, x, y, w, h);
+	}
 };
 
 const loadImage = (src, onload) => {
@@ -425,21 +540,68 @@ const updateEnd = dt => {
 	mouse.state &= ~1;
 };
 
+const DEBUG_RENDER_IMAGES = false;
 const render = dt => {
 	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black');
 	
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	
-	if (background) {
-		ctx.drawImage(background, 0, 0, canvasSize.x, canvasSize.y);
+	if (DEBUG_RENDER_IMAGES) {
+		drawBackground();
+		drawImage();
 	}
 	
-	if (image)
-		drawImage();
 	
-	Draw.circle(mouse.pos.x, mouse.pos.y, 50, 'blue');
-	Draw.circle(mouse.pos.x, mouse.pos.y, 20, 'white');
+	{
+		const A = new V2(500, 150);
+		const B = V2.clone(mouse.pos).subtractV2(canvasCenter);
+		const C = V2.project(A, B);
+		
+		A.addV2(canvasCenter);
+		B.addV2(canvasCenter);
+		C.addV2(canvasCenter);
+		
+		const { x, y } = canvasCenter;
+		Draw.line(x, y, A.x, A.y, 'blue', 5);
+		Draw.line(x, y, B.x, B.y, 'red', 5);
+		Draw.line(x, y, C.x, C.y, 'pink', 5);
+		
+		{
+			const { topLeft, topRight, bottomRight, bottomLeft } = testRect;
+			const x1 = testRect.topLeft.x;
+			const y1 = testRect.topLeft.y;
+			const x2 = testRect.bottomRight.x;
+			const y2 = testRect.bottomRight.y;
+			Draw.line(topLeft.x, topLeft.y, topRight.x, topRight.y, 'purple', 5);
+			Draw.line(topRight.x, topRight.y, bottomRight.x, bottomRight.y, 'orange', 5);
+			Draw.line(bottomRight.x, bottomRight.y, bottomLeft.x, bottomLeft.y, 'blue', 5);
+			Draw.line(bottomLeft.x, bottomLeft.y, topLeft.x, topLeft.y, 'green', 5);
+			
+			// Draw.rect(x1, y1, testRect.w, testRect.h);
+		}
+		
+		testRect.rotate(90 * dt);
+		
+		const a = testRect.corners[0];
+		const b = testRect.corners[1];
+		const c = mouse.pos;
+		let isInside = true;
+		for (let i = 0; i < 4; ++i) {
+			if (V2.getSide(testRect.corners[i], testRect.corners[(i + 1) % 4], c) < 0) {
+				isInside = false;
+				break;
+			}
+		}
+		const color = (isInside) ? 'green' : 'red';
+		Draw.circle(testRect.x, testRect.y, 20, color);
+	}
+	
+	
+	
+	
+	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'blue');
+	Draw.circle(mouse.pos.x, mouse.pos.y, 2, 'white');
 	
 	{
 		const { str, transform } = selectedItem;
@@ -455,28 +617,15 @@ const render = dt => {
 	for (let i = itemsInScene.length; i--; ) {
 		drawTextItem(itemsInScene[i]);
 	}
-	
-	{
-		const A = new V2(500, 0);
-		const B = V2.clone(mouse.pos).subtractV2(canvasCenter);
-		const C = V2.project(A, B);
-		
-		A.addV2(canvasCenter);
-		B.addV2(canvasCenter);
-		C.addV2(canvasCenter);
-		
-		const { x, y } = canvasCenter;
-		Draw.line(x, y, A.x, A.y, 'blue');
-		Draw.line(x, y, B.x, B.y, 'red');
-		Draw.line(x, y, C.x, C.y, 'lime');
-	}
 };
+
+const testRect = new Rect(200, 200, 200, 100);
 
 const loop = t => {
 	if (lastRender === undefined)
 		lastRender = t;
 	
-	const dt = t - lastRender;
+	const dt = (t - lastRender) * 0.001;
 	lastRender = t;
 	
 	updateBegin(dt);
