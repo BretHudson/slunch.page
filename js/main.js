@@ -144,7 +144,7 @@ const Draw = {
 		ctx.fill();
 	},
 	text: (x, y, size, str, color = 'magenta', options = {}) => {
-		ctx.font = getFont(size);
+		setFont(size);
 		
 		const stroke = options.stroke || 0;
 		const angle = options.angle || 0;
@@ -156,6 +156,7 @@ const Draw = {
 			ctx.translate(-x, -y);
 		}
 		
+		setFont(size);
 		if (stroke > 0) {
 			ctx.lineWidth = stroke;
 			ctx.strokeStyle = color;
@@ -180,8 +181,6 @@ let canvasScreenSize = new V2(0, 0);
 
 const tempPos = new V2(0, 0);
 const tempPos2 = new V2(0, 0);
-
-const measureDiv = document.createElement('span');
 
 let page;
 let hue, last = null;
@@ -275,7 +274,7 @@ const addCanvasEvents = () => {
 	});
 };
 
-const getFont = size => ctx.font = `${size}pt "Bubblegum Sans"`;
+const setFont = size => ctx.font = `${size}px "Bubblegum Sans"`;
 
 const drawTextWithShadow = (str, x, y, size, angle) => {
 	const offset = tempPos.set(size / 12, size / 12);
@@ -301,10 +300,6 @@ const setCanvasSize = (w, h) => {
 	
 	canvasSize.set(w, h);
 	canvasCenter.set(w >> 1, h >> 1);
-};
-
-const resize = e => {
-	setCanvasSize(canvas.width, canvas.height);
 };
 
 const drawTextItem = textObj => {
@@ -335,13 +330,11 @@ const createText = (str, x, y, size) => {
 			},
 			set size(val) {
 				this._size = val;
-				
-				measureDiv.textContent = str;
-				measureDiv.style.font = getFont(val);
-				
-				const rect = measureDiv.getBoundingClientRect();
-				this._width = rect.width;
-				this._height = rect.height;
+				setFont(val);
+				const textMetrics = ctx.measureText(this.parent.str);
+				this._width = textMetrics.width;
+				this._height = textMetrics.actualBoundingBoxDescent + textMetrics.actualBoundingBoxAscent;
+				// this._height *= 2.0;
 			},
 			angle: 0,
 			get width() {
@@ -387,11 +380,6 @@ const update = dt => {
 		selectedTransform.drag.setV2(mouse.drag);
 	}
 	
-	const text1 = document.querySelector('input[name=text-top]').value;
-	const text2 = document.querySelector('input[name=text-bottom]').value;
-	itemsInScene[0].str = text1;
-	itemsInScene[1].str = text2;
-	
 	if (mouse.released === true) {
 		selectedTransform.pos.addV2(mouse.drag);
 		selectedTransform.drag.set(0, 0);
@@ -417,6 +405,10 @@ const render = dt => {
 	
 	Draw.circle(mouse.pos.x, mouse.pos.y, 50, 'blue');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 20, 'white');
+	
+	// Draw text
+	const text1 = document.querySelector('input[name=text-top]').value;
+	const text2 = document.querySelector('input[name=text-bottom]').value;
 	
 	{
 		const { str, transform } = selectedItem;
@@ -451,11 +443,6 @@ const loop = t => {
 };
 
 window.addEventListener('DOMContentLoaded', e => {
-	measureDiv.style.visibility = 'hidden';
-	measureDiv.style.whiteSpace = 'nowrap';
-	measureDiv.style.float = 'left';
-	document.body.appendChild(measureDiv);
-	
 	hue = (new Date() / 10);
 	window.requestAnimationFrame(change);
 	
@@ -463,13 +450,15 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	uploadForm = document.querySelector('label[for="image-upload"]');
 	
+	background = loadImage('img/background.jpg');
+	loadLunchImage('img/slunch.jpg');
+	
+	addDragDropEvents();
+	
 	canvas = document.getElementById('canvas');
 	ctx = canvas.getContext('2d');
 	
-	// NOTE(bret): Otherwise the mouse position is a bit off... :/
-	window.requestAnimationFrame(() => {
-		setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
-	});
+	setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
 	
 	addCanvasEvents();
 	
@@ -484,21 +473,16 @@ window.addEventListener('DOMContentLoaded', e => {
 		link.click();
 	});
 	
-	background = loadImage('img/background.jpg');
-	loadLunchImage('img/slunch.jpg');
-	
-	addDragDropEvents();
-	
 	const angle = 10;
 	
-	const text1 = createText('SLUNCH', -300, -160, 100);
+	const text1 = createText('SLUNCH', -230, -120, 100);
 	text1.transform.angle = -angle;
 	
-	const text2 = createText('is served', 300, 190, 50);
+	const text2 = createText('is served', 230, 140, 50);
 	text2.transform.angle = angle;
 	
 	customText = createText('x', 0, 0, 100);
-	customText.transform.angle = 0;
+	customText.transform.angle = 15;
 	
 	itemsInScene.push(text1, text2, customText);
 	
@@ -506,5 +490,3 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	window.requestAnimationFrame(loop);
 });
-
-window.addEventListener('resize', resize);
