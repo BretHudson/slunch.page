@@ -1,6 +1,7 @@
 Element.prototype.on = function(type, func, capture) {
 	type.split(' ').forEach(t => this.addEventListener(t, func, capture));
 };
+document.on = Element.prototype.on;
 
 class V2 {
 	constructor(x = 0, y = 0) {
@@ -51,7 +52,6 @@ class V2 {
 	}
 	
 	set(x = 0, y = 0) {
-		// console.log('in set', { x, y });
 		this.x = x;
 		this.y = y;
 		return this;
@@ -138,7 +138,7 @@ const getMethods = (obj) => {
 }
 
 const _rectTempPos = new V2();
-const _rectTempPos2 = new V2()
+const _rectTempPos2 = new V2();
 class Rect {
 	constructor(x = 0, y = 0, w = 0, h = 0) {
 		this.pos = new V2();
@@ -467,6 +467,28 @@ const addCanvasEvents = () => {
 		mouse.state = 1;
 		setMousePosRaw(e);
 	});
+	
+	document.on('keydown', e => {
+		if (e.keyCode === 8) {
+			if (selectedItem !== undefined) {
+				switch (selectedItem.type) {
+					case ITEMS.TEXT: {
+						selectedItem.backspace();
+					}
+				}
+			}
+		}
+	});
+	
+	document.on('keypress', e => {
+		if (selectedItem !== undefined) {
+			switch (selectedItem.type) {
+				case ITEMS.TEXT: {
+					selectedItem.add(String.fromCharCode(e.charCode));
+				} break;
+			}
+		}
+	});
 };
 
 const getFont = size => ctx.font = `${size}pt "Bubblegum Sans"`;
@@ -513,6 +535,18 @@ const ITEMS = {
 	TEXT: 'text'
 };
 
+const getSizeOfStr = (str, size) => {
+	measureDiv.textContent = str;
+	measureDiv.style.font = getFont(size);
+	
+	const rect = measureDiv.getBoundingClientRect();
+	return {
+		width: rect.width,
+		height: rect.height
+	};
+};
+
+const HEIGHT_TO_SIZE = 1 / 1.54;
 const createText = (str, x, y, size) => {
 	const text = {
 		type: ITEMS.TEXT,
@@ -524,32 +558,34 @@ const createText = (str, x, y, size) => {
 			_size: 0,
 			_width: 0,
 			_height: 0,
+			_resize() {
+				const { width, height } = getSizeOfStr(this.parent.str, this.size);
+				this.rect.setSize(width, height);
+			},
 			get size() {
 				return this._size;
 			},
 			set size(val) {
 				this._size = val;
-				
-				measureDiv.textContent = str;
-				measureDiv.style.font = getFont(val);
-				
-				const rect = measureDiv.getBoundingClientRect();
-				this._width = rect.width;
-				this._height = rect.height;
+				this._resize();
 			},
 			angle: 0,
-			get width() {
-				return this._width;
-			},
-			get height() {
-				return this._height;
-			}
 		}
 	};
 	
 	text.transform.parent = text;
 	text.transform.size = size;
 	text.transform.pos = text.transform.rect.pos;
+	
+	text.add = c => {
+		text.str += c;
+		text.transform._resize();
+	}
+	
+	text.backspace = () => {
+		text.str = text.str.slice(0, -1);
+		text.transform._resize();
+	}
 	
 	return text;
 };
@@ -597,11 +633,6 @@ const update = dt => {
 		if (testRect.containsV2(mouse.pos)) {
 			draggingRect = true;
 		}
-	}
-	
-	if (draggingRect === true) {
-		const centerToMouse = tempPos.set(mouse.pos).subtractV2(testRect.pos);
-		Draw.line(testRect.x, testRect.y, centerToMouse.x, centerToMouse.y, 'purple');
 	}
 };
 
@@ -667,15 +698,17 @@ const render = dt => {
 		Draw.circle(testRect.x, testRect.y, 20, color);
 	}
 	
-	
 	Draw.circle(mouse.pos.x, mouse.pos.y, 15, 'blue');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
 	
-	// if (draggingRect === true)
+	if (draggingRect === true)
 	{
 		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(testRect.pos);
-		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle).subtractV2(testRect.pos);
+		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle);
+		
+		centerToCorner.x = centerToCorner.x * Math.sign(centerToMouse.x);
+		centerToCorner.y = centerToCorner.y * Math.sign(centerToMouse.y);
 		
 		const drawPos = tempPos3.setV2(testRect);
 		
@@ -683,21 +716,19 @@ const render = dt => {
 		
 		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, 'white', 8);
 		
-		const C = V2.project(centerToMouse, centerToCorner);
-		C.x = Math.abs(C.x);
-		C.y = Math.abs(C.y);
+		const proj = V2.project(centerToMouse, centerToCorner);
+		proj.x = Math.abs(proj.x);
+		proj.y = Math.abs(proj.y);
 		
-		const mag = C.magnitude;
+		const mag = proj.magnitude;
 		if (mag < 100)
-			C.normalize().multiplyScalar(100);
+			proj.normalize().multiplyScalar(100);
 		
-		const D = V2.clone(C);
-		Draw.line(drawPos.x, drawPos.y, D.x, D.y, 'pink', 4);
+		Draw.line(testRect.pos.x, testRect.pos.y, proj.x * Math.sign(centerToMouse.x) + testRect.pos.x, proj.y * Math.sign(centerToMouse.y) + testRect.pos.y, 'yellow', 4);
 		
-		
-		C.multiplyScalar(2);
-		C.rotateDeg(-testRect.angle);
-		// testRect.setSize(C.x, C.y);
+		proj.multiplyScalar(2);
+		proj.rotateDeg(-testRect.angle);
+		customText.transform.size = proj.y * HEIGHT_TO_SIZE;
 	}
 };
 
@@ -723,6 +754,7 @@ const loop = t => {
 
 window.addEventListener('DOMContentLoaded', e => {
 	measureDiv.style.visibility = 'hidden';
+	measureDiv.style.position = 'absolute';
 	measureDiv.style.whiteSpace = 'nowrap';
 	measureDiv.style.float = 'left';
 	document.body.appendChild(measureDiv);
@@ -768,8 +800,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	const text2 = createText('is served', 300, 190, 50);
 	text2.transform.angle = angle;
 	
-	customText = createText('Yxy', 0, 0, 100);
-	customText = createText('Yxy', 250, -100, 100);
+	customText = createText('Yay', -250, -100, 100);
 	customText.transform.angle = 0;
 	
 	itemsInScene.push(text1, text2, customText);
