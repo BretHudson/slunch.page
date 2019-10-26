@@ -245,16 +245,23 @@ const Draw = {
 	drawPos: new V2(),
 	line: (x, y, x2, y2, color = 'magenta', lineWidth = 1) => {
 		
+		ctx.save();
+		
+		ctx.translate(canvasCenter.x, canvasCenter.y);
+		
 		ctx.strokeStyle = color;
 		ctx.lineWidth  = lineWidth;
 		ctx.beginPath();
 		ctx.moveTo(x, y);
 		ctx.lineTo(x2, y2);
 		ctx.stroke();
+		
+		ctx.restore();
 	},
 	rect: (x, y, w, h, color = 'magenta', fill = true, options = {}) => {
 		const { centered } = options;
 		const angle = options.angle || 0;
+		const absolute = options.absolute || false;
 		
 		const offset = Draw.tempPos.set(w >> 1, h >> 1);
 		const centerPos = Draw.centerPos.set(x, y);
@@ -262,12 +269,16 @@ const Draw = {
 		if (centered === true)
 			drawPos.subtractV2(offset);
 		
+		ctx.save();
+		
 		if (angle !== 0) {
-			ctx.save();
 			ctx.translate(centerPos.x, centerPos.y);
 			ctx.rotate(angle * Math.PI / 180);
 			ctx.translate(-centerPos.x, -centerPos.y);
 		}
+		
+		if (absolute !== true)
+			ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		if (fill === true) {
 			ctx.fillStyle = color;
@@ -277,30 +288,37 @@ const Draw = {
 			ctx.strokeRect(drawPos.x, drawPos.y, w, h);
 		}
 		
-		if (angle !== 0) {
-			ctx.restore();
-		}
+		ctx.restore();
 	},
 	circle: (x, y, radius, color = 'magenta') => {
 		ctx.fillStyle = color;
+		
+		ctx.save();
+		
+		ctx.translate(canvasCenter.x, canvasCenter.y);
+		
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, 360);
 		ctx.fill();
+		
+		ctx.restore();
 	},
 	text: (x, y, size, str, color = 'magenta', options = {}) => {
-		setFont(size);
+		ctx.font = getFont(size);
 		
 		const stroke = options.stroke || 0;
 		const angle = options.angle || 0;
 		
+		ctx.save();
+		
 		if (angle !== 0) {
-			ctx.save();
 			ctx.translate(x, y);
 			ctx.rotate(angle * Math.PI / 180);
 			ctx.translate(-x, -y);
 		}
 		
-		setFont(size);
+		ctx.translate(canvasCenter.x, canvasCenter.y);
+		
 		if (stroke > 0) {
 			ctx.lineWidth = stroke;
 			ctx.strokeStyle = color;
@@ -310,9 +328,7 @@ const Draw = {
 			ctx.fillText(str, x, y);
 		}
 		
-		if (angle !== 0) {
-			ctx.restore();
-		}
+		ctx.restore();
 	}
 };
 
@@ -325,6 +341,9 @@ let canvasScreenSize = new V2();
 
 const tempPos = new V2();
 const tempPos2 = new V2();
+const tempPos3 = new V2();
+
+const measureDiv = document.createElement('span');
 
 let page;
 let hue, last = null;
@@ -427,7 +446,7 @@ const addCanvasEvents = () => {
 	});
 };
 
-const setFont = size => ctx.font = `${size}px "Bubblegum Sans"`;
+const getFont = size => ctx.font = `${size}pt "Bubblegum Sans"`;
 
 const drawTextWithShadow = (str, x, y, size, angle) => {
 	const offset = tempPos.set(size / 12, size / 12);
@@ -455,11 +474,15 @@ const setCanvasSize = (w, h) => {
 	canvasCenter.set(w >> 1, h >> 1);
 };
 
+const resize = e => {
+	setCanvasSize(canvas.width, canvas.height);
+};
+
 const drawTextItem = textObj => {
 	const { str, transform } = textObj;
 	const { pos, drag, size, angle } = transform;
 	
-	const drawPos = tempPos.setV2(pos).addV2(drag).addV2(canvasCenter);
+	const drawPos = tempPos.setV2(pos).addV2(drag);
 	drawTextWithShadow(str, drawPos.x, drawPos.y, size, angle);
 };
 
@@ -473,7 +496,7 @@ const createText = (str, x, y, size) => {
 		str: str,
 		transform: {
 			parent: null,
-			pos: new V2(x, y),
+			rect: new Rect(x, y, 100, 100),
 			drag: new V2(),
 			_size: 0,
 			_width: 0,
@@ -483,11 +506,13 @@ const createText = (str, x, y, size) => {
 			},
 			set size(val) {
 				this._size = val;
-				setFont(val);
-				const textMetrics = ctx.measureText(this.parent.str);
-				this._width = textMetrics.width;
-				this._height = textMetrics.actualBoundingBoxDescent + textMetrics.actualBoundingBoxAscent;
-				// this._height *= 2.0;
+				
+				measureDiv.textContent = str;
+				measureDiv.style.font = getFont(val);
+				
+				const rect = measureDiv.getBoundingClientRect();
+				this._width = rect.width;
+				this._height = rect.height;
 			},
 			angle: 0,
 			get width() {
@@ -501,6 +526,7 @@ const createText = (str, x, y, size) => {
 	
 	text.transform.parent = text;
 	text.transform.size = size;
+	text.transform.pos = text.transform.rect.pos;
 	
 	return text;
 };
@@ -511,7 +537,7 @@ const itemsInScene = [];
 
 let lastRender;
 const updateBegin = dt => {
-	mouse.pos.setV2(mouse.posRaw).multiplyScalar(canvasRatio);
+	mouse.pos.setV2(mouse.posRaw).multiplyScalar(canvasRatio).subtractV2(canvasCenter);
 	
 	if (mouse.pressed === true) {
 		mouse.startRaw.setV2(mouse.posRaw);
@@ -533,11 +559,17 @@ const update = dt => {
 		selectedTransform.drag.setV2(mouse.drag);
 	}
 	
+	const text1 = document.querySelector('input[name=text-top]').value;
+	const text2 = document.querySelector('input[name=text-bottom]').value;
+	itemsInScene[0].str = text1;
+	itemsInScene[1].str = text2;
+	
 	if (mouse.released === true) {
 		selectedTransform.pos.addV2(mouse.drag);
 		selectedTransform.drag.set(0, 0);
 	}
 	
+	const testRect = customText.transform.rect;
 	if (mouse.pressed) {
 		V2.compareDistance
 		if (testRect.containsV2(mouse.pos)) {
@@ -558,7 +590,9 @@ const updateEnd = dt => {
 const DEBUG_RENDER_IMAGES = false;
 const DEBUG_RENDER_PROJECTION = false;
 const render = dt => {
-	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black');
+	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', true, {
+		absolute: true
+	});
 	
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
@@ -569,19 +603,17 @@ const render = dt => {
 	}
 	
 	if (DEBUG_RENDER_PROJECTION) {
-		const A = V2.clone(mouse.pos).subtractV2(canvasCenter);
+		const A = V2.clone(mouse.pos);
 		const B = new V2(500, 150);
 		const C = V2.project(A, B);
 		
-		A.addV2(canvasCenter);
-		B.addV2(canvasCenter);
-		C.addV2(canvasCenter);
-		
-		const { x, y } = canvasCenter;
-		Draw.line(x, y, A.x, A.y, 'blue', 5);
-		Draw.line(x, y, B.x, B.y, 'pink', 5);
-		Draw.line(x, y, C.x, C.y, 'red', 5);
+		Draw.line(0, 0, A.x, A.y, 'blue', 5);
+		Draw.line(0, 0, B.x, B.y, 'pink', 5);
+		Draw.line(0, 0, C.x, C.y, 'red', 5);
 	}
+	
+	const testRect = customText.transform.rect;
+	console.log(testRect.size);
 	
 	{
 		const { topLeft, topRight, bottomRight, bottomLeft } = testRect;
@@ -604,15 +636,11 @@ const render = dt => {
 	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
 	
-	// Draw text
-	const text1 = document.querySelector('input[name=text-top]').value;
-	const text2 = document.querySelector('input[name=text-bottom]').value;
-	
 	{
 		const { str, transform } = selectedItem;
 		const { pos, drag, size, angle, width, height } = transform;
 		
-		tempPos.setV2(canvasCenter).addV2(pos).addV2(drag);
+		tempPos.setV2(pos).addV2(drag);
 		
 		Draw.rect(tempPos.x, tempPos.y, width, height, 'red', true, {
 			centered: true
@@ -626,29 +654,29 @@ const render = dt => {
 	// if (draggingRect === true)
 	{
 		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(testRect.pos);
-		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle);
+		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle).subtractV2(testRect.pos);
 		
+		const drawPos = tempPos3.setV2(testRect);
 		
-		Draw.line(testRect.x, testRect.y, mouse.pos.x, mouse.pos.y, 'white', 4);
+		Draw.line(drawPos.x, drawPos.y, mouse.pos.x, mouse.pos.y, 'white', 4);
 		
-		Draw.line(testRect.x, testRect.y, testRect.x + centerToCorner.x, testRect.y + centerToCorner.y, 'white', 8);
+		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, 'white', 8);
 		
 		const C = V2.project(centerToMouse, centerToCorner);
 		C.x = Math.abs(C.x);
 		C.y = Math.abs(C.y);
 		
 		const mag = C.magnitude;
-		if (mag < 100) {
-			console.log(mag);
+		if (mag < 100)
 			C.normalize().multiplyScalar(100);
-		}
 		
-		Draw.line(testRect.x, testRect.y, testRect.x + C.x, testRect.y + C.y, 'pink', 4);
+		const D = V2.clone(C);
+		Draw.line(drawPos.x, drawPos.y, D.x, D.y, 'pink', 4);
 		
 		
 		C.multiplyScalar(2);
 		C.rotateDeg(-testRect.angle);
-		testRect.setSize(C.x, C.y);
+		// testRect.setSize(C.x, C.y);
 	}
 };
 
@@ -673,6 +701,11 @@ const loop = t => {
 };
 
 window.addEventListener('DOMContentLoaded', e => {
+	measureDiv.style.visibility = 'hidden';
+	measureDiv.style.whiteSpace = 'nowrap';
+	measureDiv.style.float = 'left';
+	document.body.appendChild(measureDiv);
+	
 	hue = (new Date() / 10);
 	window.requestAnimationFrame(change);
 	
@@ -680,15 +713,13 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	uploadForm = document.querySelector('label[for="image-upload"]');
 	
-	background = loadImage('img/background.jpg');
-	loadLunchImage('img/slunch.jpg');
-	
-	addDragDropEvents();
-	
 	canvas = document.getElementById('canvas');
 	ctx = canvas.getContext('2d');
 	
-	setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
+	// NOTE(bret): Otherwise the mouse position is a bit off... :/
+	window.requestAnimationFrame(() => {
+		setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
+	});
 	
 	addCanvasEvents();
 	
@@ -703,16 +734,22 @@ window.addEventListener('DOMContentLoaded', e => {
 		link.click();
 	});
 	
+	background = loadImage('img/background.jpg');
+	loadLunchImage('img/slunch.jpg');
+	
+	addDragDropEvents();
+	
 	const angle = 10;
 	
-	const text1 = createText('SLUNCH', -230, -120, 100);
+	const text1 = createText('SLUNCH', -300, -160, 100);
 	text1.transform.angle = -angle;
 	
-	const text2 = createText('is served', 230, 140, 50);
+	const text2 = createText('is served', 300, 190, 50);
 	text2.transform.angle = angle;
 	
-	customText = createText('x', 0, 0, 100);
-	customText.transform.angle = 15;
+	customText = createText('Yxy', 0, 0, 100);
+	customText = createText('Yxy', 250, -100, 100);
+	customText.transform.angle = 0;
 	
 	itemsInScene.push(text1, text2, customText);
 	
@@ -720,3 +757,5 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	window.requestAnimationFrame(loop);
 });
+
+window.addEventListener('resize', resize);
