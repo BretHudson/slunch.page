@@ -112,7 +112,12 @@ let mainElem;
 let uploadForm;
 let image, background;
 let canvas, ctx;
-let canvasX, canvasY, canvasW, canvasH;
+let canvasScreenPos = new V2(0, 0);
+let canvasScreenSize = new V2(0, 0);
+
+const tempPos = new V2(0, 0);
+const tempPos2 = new V2(0, 0);
+const drawPos = new V2(0, 0);
 
 let page;
 let hue, last = null;
@@ -126,21 +131,21 @@ const change = timestamp => {
 	window.requestAnimationFrame(change);
 };
 
-//const [ WIDTH, HEIGHT ] = [ 960, 540 ];
-const [ WIDTH, HEIGHT ] = [ 1300, 974 ];
+//const [ INIT_WIDTH, INIT_HEIGHT ] = [ 960, 540 ];
+const [ INIT_WIDTH, INIT_HEIGHT ] = [ 1300, 974 ];
 const defaultAspectRatio = 16 / 9;
 const drawImage = () => {
 	const aspectRatio = image.width / image.height;
 	let x, y, w, h;
 	if (aspectRatio > defaultAspectRatio) {
-		w = WIDTH;
-		h = WIDTH / aspectRatio;
+		w = canvasSize.x;
+		h = canvasSize.x / aspectRatio;
 		x = 0;
-		y = (HEIGHT - h) >> 1;
+		y = (canvasSize.y - h) >> 1;
 	} else {
-		w = HEIGHT * aspectRatio;
-		h = HEIGHT;
-		x = (WIDTH - w) >> 1;
+		w = canvasSize.y * aspectRatio;
+		h = canvasSize.y;
+		x = (canvasSize.x - w) >> 1;
 		y = 0;
 	}
 	ctx.drawImage(image, x, y, w, h);
@@ -189,35 +194,37 @@ let mouse = {
 };
 
 const addCanvasEvents = () => {
+	const setMousePosRaw = e => {
+		mouse.posRaw.set(e.clientX, e.clientY).subtractV2(canvasScreenPos);
+	};
+	
 	canvas.on('mousedown', e => {
 		mouse.state = 3;
-		mouse.posRaw.set(e.clientX - canvasX, e.clientY - canvasY);
+		setMousePosRaw(e);
 	});
 	
-	canvas.on('mousemove', e => {
-		mouse.posRaw.set(e.clientX - canvasX, e.clientY - canvasY);
-	});
+	canvas.on('mousemove', setMousePosRaw);
 	
 	canvas.on('mouseup', e => {
 		mouse.state = 1;
-		mouse.posRaw.set(e.clientX - canvasX, e.clientY - canvasY);
+		setMousePosRaw(e);
 	});
 };
 
-const getFont = size => `${size}px "Bubblegum Sans"`;
+const setFont = size => ctx.font = `${size}px "Bubblegum Sans"`;
 
 const drawTextWithShadow = (str, x, y, size, angle) => {
 	const offset = size / 12;
 	
-	ctx.font = getFont(size);
+	setFont(size);
 	
 	ctx.save();
 	ctx.translate(x, y);
 	ctx.rotate(angle * Math.PI / 180);
 	ctx.translate(-x, -y);
-		
-	// ctx.fillStyle = '#C5C5C5';
-	// ctx.fillText(str, x + offset, y + offset);
+	
+	ctx.fillStyle = '#C5C5C5';
+	ctx.fillText(str, x + offset, y + offset);
 	
 	ctx.fillStyle = 'white';
 	ctx.fillText(str, x, y);
@@ -225,11 +232,27 @@ const drawTextWithShadow = (str, x, y, size, angle) => {
 	ctx.restore();
 }
 
+const canvasSize = new V2(0, 0);
+const canvasCenter = new V2(0, 0);
+const setCanvasSize = (w, h) => {
+	canvas.width = w;
+	canvas.height = h;
+	
+	let canvasRect = canvas.getBoundingClientRect();
+	canvasScreenPos.set(canvasRect.x, canvasRect.y);
+	canvasScreenSize.set(canvasRect.width, canvasRect.height);
+	canvasRatio = w / canvasScreenSize.x;
+	
+	canvasSize.set(w, h);
+	canvasCenter.set(w >> 1, h >> 1);
+};
+
 const _drawTextWithShadow = textObj => {
 	const { str, transform } = textObj;
-	const { x, y, xDrag, yDrag, size, angle } = transform;
-	const [ CX, CY ] = [ WIDTH >> 1, HEIGHT >> 1 ]
-	drawTextWithShadow(str, x + xDrag + CX, y + yDrag + CY, size, angle);
+	const { pos, drag, size, angle } = transform;
+	
+	tempPos.setV2(pos).addV2(drag).addV2(canvasCenter);
+	drawTextWithShadow(str, tempPos.x, tempPos.y, size, angle);
 };
 
 const ITEMS = {
@@ -242,10 +265,8 @@ const createText = (str, x, y, size) => {
 		str: str,
 		transform: {
 			parent: null,
-			x: 0,
-			y: 0,
-			xDrag: 0,
-			yDrag: 0,
+			pos: new V2(x, y),
+			drag: new V2(0, 0),
 			_size: 0,
 			_width: 0,
 			_height: 0,
@@ -254,10 +275,11 @@ const createText = (str, x, y, size) => {
 			},
 			set size(val) {
 				this._size = val;
-				ctx.font = getFont(val);
+				setFont(val);
 				const textMetrics = ctx.measureText(this.parent.str);
 				this._width = textMetrics.width;
 				this._height = textMetrics.actualBoundingBoxDescent + textMetrics.actualBoundingBoxAscent;
+				// this._height *= 2.0;
 			},
 			angle: 0,
 			get width() {
@@ -281,7 +303,6 @@ let customText;
 let selectedItem = customText;
 
 let lastRender;
-let drag = { x: 0, y: 0 };
 const updateBegin = dt => {
 	mouse.pos.setV2(mouse.posRaw).multiplyScalar(canvasRatio);
 	
@@ -302,14 +323,12 @@ const updateBegin = dt => {
 const update = dt => {
 	const selectedTransform = selectedItem.transform;
 	if (mouse.held === true) {
-		selectedTransform.xDrag = mouse.drag.x;
-		selectedTransform.yDrag = mouse.drag.y;
+		selectedTransform.drag.setV2(mouse.drag);
 	}
 	
 	if (mouse.released === true) {
-		selectedTransform.x += mouse.drag.x;
-		selectedTransform.y += mouse.drag.y;
-		selectedTransform.xDrag = selectedTransform.yDrag = 0;
+		selectedTransform.pos.addV2(mouse.drag);
+		selectedTransform.drag.set(0, 0);
 	}
 };
 
@@ -319,13 +338,13 @@ const updateEnd = dt => {
 
 const render = dt => {
 	ctx.fillStyle = 'black';
-	ctx.fillRect(0, 0, WIDTH, HEIGHT);
+	ctx.fillRect(0, 0, canvasSize.x, canvasSize.y);
 	
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	
 	if (background) {
-		ctx.drawImage(background, 0, 0, WIDTH, HEIGHT);
+		ctx.drawImage(background, 0, 0, canvasSize.x, canvasSize.y);
 	}
 	
 	if (image)
@@ -335,28 +354,27 @@ const render = dt => {
 	const text1 = document.querySelector('input[name=text-top]').value;
 	const text2 = document.querySelector('input[name=text-bottom]').value;
 	
-	const CX = drag.x + (WIDTH >> 1);
-	const CY = drag.y + (HEIGHT >> 1);
-	
 	const angle = 10;
-	drawTextWithShadow(text1, CX - 230, CY - 120, 100, -angle);
-	drawTextWithShadow(text2, CX + 230, CY + 140, 50, angle);
+	drawTextWithShadow(text1, canvasCenter.x - 230, canvasCenter.y - 120, 100, -angle);
+	drawTextWithShadow(text2, canvasCenter.x + 230, canvasCenter.y + 140, 50, angle);
 	
 	{
 		const { str, transform } = customText;
-		const { x, y, xDrag, yDrag, size, angle, width, height } = transform;
+		const { pos, drag, size, angle, width, height } = transform;
 		
-		const centerX = x + xDrag + CX;
-		const centerY = y + yDrag + CY;
-		const drawX = centerX - (width >> 1);
-		const drawY = centerY - (height >> 1);
+		const offset = tempPos;
+		const centerPos = tempPos2;
+		
+		offset.set(width >> 1, height >> 1);
+		centerPos.setV2(canvasCenter).addV2(pos).addV2(drag);
+		drawPos.setV2(centerPos).subtractV2(offset);
 		
 		ctx.save();
-		ctx.translate(centerX, centerY);
+		ctx.translate(centerPos.x, centerPos.y);
 		ctx.rotate(angle * Math.PI / 180);
-		ctx.translate(-centerX, -centerY);
+		ctx.translate(-centerPos.x, -centerPos.y);
 		ctx.fillStyle = 'red';
-		ctx.fillRect(drawX, drawY, width, height);
+		ctx.fillRect(drawPos.x, drawPos.y, width, height);
 		ctx.restore();
 	}
 	
@@ -405,16 +423,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	canvas = document.getElementById('canvas');
 	ctx = canvas.getContext('2d');
 	
-	canvas.width = WIDTH;
-	canvas.height = HEIGHT;
-	
-	let canvasRect = canvas.getBoundingClientRect();
-	canvasX = canvasRect.x;
-	canvasY = canvasRect.y;
-	canvasW = canvasRect.width;
-	canvasH = canvasRect.height;
-	canvasRatio = WIDTH / canvasW;
-	console.log(canvasRatio);
+	setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
 	
 	addCanvasEvents();
 	
@@ -429,7 +438,7 @@ window.addEventListener('DOMContentLoaded', e => {
 		link.click();
 	});
 	
-	customText = createText('customtexty', 0, 0, 100);
+	customText = createText('x', 0, 0, 100);
 	selectedItem = customText;
 	
 	window.requestAnimationFrame(loop);
