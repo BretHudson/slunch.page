@@ -29,8 +29,8 @@ class V2 {
 		return V2.clone(v2).storeProjection(v1, v2);
 	}
 	
-	static getSide(start, end, point) {
-		return ((end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x));
+	static getSide(a, b, point) {
+		return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
 	}
 	
 	storeProjection(v1, v2) {
@@ -127,6 +127,9 @@ class V2 {
 		return Math.atan2(this.y, this.x);
 	}
 }
+
+V2.zero = new V2();
+V2.one = new V2(1, 1);
 
 const getMethods = (obj) => {
 	const properties = new Set();
@@ -641,7 +644,7 @@ const updateEnd = dt => {
 };
 
 const DEBUG_RENDER_IMAGES = false;
-const DEBUG_RENDER_PROJECTION = false;
+const DEBUG_RENDER_PROJECTION = true;
 const render = dt => {
 	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', true, {
 		absolute: true
@@ -656,13 +659,14 @@ const render = dt => {
 	}
 	
 	if (DEBUG_RENDER_PROJECTION) {
-		const A = V2.clone(mouse.pos);
-		const B = new V2(500, 150);
-		const C = V2.project(A, B);
+		const line = new V2(500, 150);
+		const proj = V2.project(mouse.pos, line);
 		
-		Draw.line(0, 0, A.x, A.y, 'blue', 5);
-		Draw.line(0, 0, B.x, B.y, 'pink', 5);
-		Draw.line(0, 0, C.x, C.y, 'red', 5);
+		const mouseIsRightOfLine = V2.getSide(V2.zero, line, mouse.pos) > 0;
+		
+		Draw.line(0, 0, mouse.pos.x, mouse.pos.y, (mouseIsRightOfLine) ? 'green' : 'blue', 5);
+		Draw.line(0, 0, line.x, line.y, 'pink', 5);
+		Draw.line(0, 0, proj.x, proj.y, 'red', 5);
 	}
 	
 	{
@@ -702,33 +706,57 @@ const render = dt => {
 	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
 	
-	if (draggingRect === true)
+	// if (draggingRect === true)
 	{
+		const drawPos = tempPos3.setV2(testRect.pos);
+		
 		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(testRect.pos);
 		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle);
 		
 		centerToCorner.x = centerToCorner.x * Math.sign(centerToMouse.x);
 		centerToCorner.y = centerToCorner.y * Math.sign(centerToMouse.y);
 		
-		const drawPos = tempPos3.setV2(testRect);
+		const mouseIsRightOfLine = V2.getSide(V2.zero, centerToCorner, centerToMouse) > 0;
+		const mouseIsRightOfLineColor = mouseIsRightOfLine ? 'cyan' : 'magenta';
 		
 		Draw.line(drawPos.x, drawPos.y, mouse.pos.x, mouse.pos.y, 'white', 4);
+		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, mouseIsRightOfLineColor, 8);
 		
-		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, 'white', 8);
+		if (false)
+		{
+			const proj = V2.project(centerToMouse, centerToCorner);
+			proj.x = Math.abs(proj.x);
+			proj.y = Math.abs(proj.y);
+			
+			const mag = proj.magnitude;
+			if (mag < 100)
+				proj.normalize().multiplyScalar(100);
+			
+			Draw.line(testRect.pos.x, testRect.pos.y, proj.x * Math.sign(centerToMouse.x) + testRect.pos.x, proj.y * Math.sign(centerToMouse.y) + testRect.pos.y, 'yellow', 4);
+			
+			proj.multiplyScalar(2);
+			proj.rotateDeg(-testRect.angle);
+			customText.transform.size = proj.y * HEIGHT_TO_SIZE;
+		}
 		
-		const proj = V2.project(centerToMouse, centerToCorner);
-		proj.x = Math.abs(proj.x);
-		proj.y = Math.abs(proj.y);
+		const sign = Math.sign(centerToMouse.x * centerToMouse.y);
+		let useHeight;
+		if (sign === 1) {
+			useHeight = mouseIsRightOfLine;
+		} else {
+			useHeight = !mouseIsRightOfLine;
+		}
 		
-		const mag = proj.magnitude;
-		if (mag < 100)
-			proj.normalize().multiplyScalar(100);
+		Draw.circle(100, 100, 50, mouseIsRightOfLineColor);
 		
-		Draw.line(testRect.pos.x, testRect.pos.y, proj.x * Math.sign(centerToMouse.x) + testRect.pos.x, proj.y * Math.sign(centerToMouse.y) + testRect.pos.y, 'yellow', 4);
-		
-		proj.multiplyScalar(2);
-		proj.rotateDeg(-testRect.angle);
-		customText.transform.size = proj.y * HEIGHT_TO_SIZE;
+		if (useHeight) {
+			const height = Math.max(Math.abs(centerToMouse.y) * 2, 100);
+			customText.transform.size = height * HEIGHT_TO_SIZE;
+		} else {
+			const width = Math.max(Math.abs(centerToMouse.x) * 2, 100);
+			const height = width * testRect.h / testRect.w;
+			customText.transform.size = height * HEIGHT_TO_SIZE;
+		}
 	}
 };
 
