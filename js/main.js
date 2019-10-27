@@ -149,15 +149,13 @@ class Rect {
 		
 		const vectors = [ this.pos, this.size ];
 		vectors.forEach(obj => {
-			getMethods(obj)
-				.slice(1, -6)
-				.forEach(m => {
-					const func = obj[m].bind(obj);
-					obj[m] = (...args) => {
-						func(...args);
-						this.recalculatePoints();
-					};
-				});
+			getMethods(obj) .forEach(m => {
+				const func = obj[m].bind(obj);
+				obj[m] = (...args) => {
+					func(...args);
+					this.recalculatePoints();
+				};
+			});
 		});
 		
 		this.corners = Array.from({ length: 4 }).map(v => new V2());
@@ -515,6 +513,8 @@ const setCanvasSize = (w, h) => {
 	
 	canvasSize.set(w, h);
 	canvasCenter.set(w >> 1, h >> 1);
+	
+	mouse.posRaw.setV2(canvasCenter).divideScalar(canvasRatio);
 };
 
 const resize = e => {
@@ -639,7 +639,7 @@ const updateEnd = dt => {
 };
 
 const DEBUG_RENDER_IMAGES = false;
-const DEBUG_RENDER_PROJECTION = true;
+const DEBUG_RENDER_PROJECTION = false;
 const render = dt => {
 	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', true, {
 		absolute: true
@@ -675,8 +675,12 @@ const render = dt => {
 		});
 	}
 	
-	for (let i = itemsInScene.length; i--; ) {
-		drawTextItem(itemsInScene[i]);
+	if (true) {
+		drawTextItem(customText)
+	} else {
+		for (let i = itemsInScene.length; i--; ) {
+			drawTextItem(itemsInScene[i]);
+		}
 	}
 	
 	const testRect = customText.transform.rect;
@@ -742,8 +746,6 @@ const render = dt => {
 			useHeight = !mouseIsRightOfLine;
 		}
 		
-		Draw.circle(100, 100, 50, mouseIsRightOfLineColor);
-		
 		if (useHeight) {
 			const height = Math.max(Math.abs(centerToMouse.y) * 2, 100);
 			customText.transform.size = height * HEIGHT_TO_SIZE;
@@ -778,7 +780,7 @@ const loop = t => {
 window.addEventListener('DOMContentLoaded', e => {
 	measureDiv.style.visibility = 'hidden';
 	measureDiv.style.position = 'absolute';
-	measureDiv.style.whiteSpace = 'nowrap';
+	measureDiv.style.whiteSpace = 'pre';
 	measureDiv.style.float = 'left';
 	document.body.appendChild(measureDiv);
 	
@@ -792,12 +794,12 @@ window.addEventListener('DOMContentLoaded', e => {
 	canvas = document.getElementById('canvas');
 	ctx = canvas.getContext('2d');
 	
-	// NOTE(bret): Otherwise the mouse position is a bit off... :/
+	addCanvasEvents();
+	
+	// NOTE(bret): Need to wait for the actual canvas to show up
 	window.requestAnimationFrame(() => {
 		setCanvasSize(INIT_WIDTH, INIT_HEIGHT);
 	});
-	
-	addCanvasEvents();
 	
 	const imageUpload = document.getElementById('image-upload');
 	imageUpload.addEventListener('change', e => readFile(e.target.files[0]), false);
@@ -823,7 +825,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	const text2 = createText('is served', 300, 190, 50);
 	text2.transform.angle = angle;
 	
-	customText = createText('Yay', -250, -100, 100);
+	customText = createText('Yay', 0, 0, 100);
 	customText.transform.angle = 0;
 	
 	itemsInScene.push(text1, text2, customText);
