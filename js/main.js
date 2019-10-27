@@ -270,9 +270,7 @@ const Draw = {
 	centerPos: new V2(),
 	drawPos: new V2(),
 	line: (x, y, x2, y2, color = 'magenta', lineWidth = 1) => {
-		
 		ctx.save();
-		
 		ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		ctx.strokeStyle = color;
@@ -296,15 +294,14 @@ const Draw = {
 			drawPos.subtractV2(offset);
 		
 		ctx.save();
+		if (absolute !== true)
+			ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		if (angle !== 0) {
 			ctx.translate(centerPos.x, centerPos.y);
 			ctx.rotate(angle * Math.PI / 180);
 			ctx.translate(-centerPos.x, -centerPos.y);
 		}
-		
-		if (absolute !== true)
-			ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		if (fill === true) {
 			ctx.fillStyle = color;
@@ -320,7 +317,6 @@ const Draw = {
 		ctx.fillStyle = color;
 		
 		ctx.save();
-		
 		ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		ctx.beginPath();
@@ -336,14 +332,13 @@ const Draw = {
 		const angle = options.angle || 0;
 		
 		ctx.save();
+		ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		if (angle !== 0) {
 			ctx.translate(x, y);
 			ctx.rotate(angle * Math.PI / 180);
 			ctx.translate(-x, -y);
 		}
-		
-		ctx.translate(canvasCenter.x, canvasCenter.y);
 		
 		if (stroke > 0) {
 			ctx.lineWidth = stroke;
