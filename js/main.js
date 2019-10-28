@@ -457,9 +457,9 @@ const addCanvasEvents = () => {
 		setMousePosRaw(e);
 	});
 	
-	canvas.on('mousemove', setMousePosRaw);
+	document.on('mousemove', setMousePosRaw);
 	
-	canvas.on('mouseup', e => {
+	document.on('mouseup', e => {
 		mouse.state = 1;
 		setMousePosRaw(e);
 	});
@@ -496,7 +496,7 @@ const drawTextWithShadow = (str, x, y, size, angle) => {
 		offset.rotateDeg(angle);
 	
 	const options = { angle };
-	Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
+	// Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
 	Draw.text(x, y, size, str, '#fff', options);
 }
 
@@ -525,7 +525,7 @@ const drawTextItem = textObj => {
 	const { str, transform } = textObj;
 	const { pos, drag, size, angle } = transform;
 	
-	const drawPos = tempPos.setV2(pos).addV2(drag);
+	const drawPos = tempPos.setV2(pos);
 	drawTextWithShadow(str, drawPos.x, drawPos.y, size, angle);
 };
 
@@ -551,14 +551,23 @@ const createText = (str, x, y, size) => {
 		str: str,
 		transform: {
 			parent: null,
+			_pos: new V2(),
 			rect: new Rect(x, y, 100, 100),
 			drag: new V2(),
 			_size: 0,
-			_width: 0,
-			_height: 0,
+			endDrag() {
+				this.rect.pos.addV2(this.drag);
+				this.drag.set(0, 0);
+			},
 			_resize() {
 				const { width, height } = getSizeOfStr(this.parent.str, this.size);
 				this.rect.setSize(width, height);
+			},
+			get width() {
+				return this.rect.w;
+			},
+			get height() {
+				return this.rect.h;
 			},
 			get size() {
 				return this._size;
@@ -567,13 +576,20 @@ const createText = (str, x, y, size) => {
 				this._size = val;
 				this._resize();
 			},
-			angle: 0,
+			get pos() {
+				return this._pos.setV2(this.rect.pos).addV2(this.drag);
+			},
+			get angle() {
+				return this.rect.angle;
+			},
+			set angle(val) {
+				this.rect.angle = val;
+			}
 		}
 	};
 	
 	text.transform.parent = text;
 	text.transform.size = size;
-	text.transform.pos = text.transform.rect.pos;
 	
 	text.add = c => {
 		text.str += c;
@@ -622,8 +638,7 @@ const update = dt => {
 	itemsInScene[1].str = text2;
 	
 	if (mouse.released === true) {
-		selectedTransform.pos.addV2(mouse.drag);
-		selectedTransform.drag.set(0, 0);
+		selectedTransform.endDrag();
 	}
 	
 	const testRect = customText.transform.rect;
@@ -664,19 +679,17 @@ const render = dt => {
 		Draw.line(0, 0, proj.x, proj.y, 'red', 5);
 	}
 	
-	{
+	if (false) {
 		const { str, transform } = selectedItem;
 		const { pos, drag, size, angle, width, height } = transform;
 		
-		tempPos.setV2(pos).addV2(drag);
-		
-		Draw.rect(tempPos.x, tempPos.y, width, height, 'red', true, {
+		Draw.rect(pos.x, pos.y, width, height, 'red', true, {
 			centered: true
 		});
 	}
 	
 	if (true) {
-		drawTextItem(customText)
+		drawTextItem(customText);
 	} else {
 		for (let i = itemsInScene.length; i--; ) {
 			drawTextItem(itemsInScene[i]);
@@ -687,16 +700,16 @@ const render = dt => {
 	
 	{
 		const { topLeft, topRight, bottomRight, bottomLeft } = testRect;
-		const x1 = testRect.topLeft.x;
-		const y1 = testRect.topLeft.y;
-		const x2 = testRect.bottomRight.x;
-		const y2 = testRect.bottomRight.y;
-		Draw.line(topLeft.x, topLeft.y, topRight.x, topRight.y, 'purple', 5);
-		Draw.line(topRight.x, topRight.y, bottomRight.x, bottomRight.y, 'orange', 5);
-		Draw.line(bottomRight.x, bottomRight.y, bottomLeft.x, bottomLeft.y, 'blue', 5);
-		Draw.line(bottomLeft.x, bottomLeft.y, topLeft.x, topLeft.y, 'green', 5);
+		const colors = [ 'purple', 'orange', 'blue', 'green' ];
 		
-		const isInside = testRect.containsV2(mouse.pos);
+		for (let l = 0; l < 4; ++l) {
+			const v1 = tempPos.setV2(testRect.corners[l]).addV2(customText.transform.drag);
+			const v2 = tempPos2.setV2(testRect.corners[(l + 1) % 4]).addV2(customText.transform.drag);
+			Draw.line(v1.x, v1.y, v2.x, v2.y, colors[l], 5);
+		}
+		
+		tempPos.setV2(mouse.pos).subtractV2(customText.transform.drag);
+		const isInside = testRect.containsV2(tempPos);
 		const color = (isInside) ? 'green' : 'red';
 		Draw.circle(testRect.x, testRect.y, 20, color);
 	}
@@ -826,7 +839,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	text2.transform.angle = angle;
 	
 	customText = createText('Yay', 0, 0, 100);
-	customText.transform.angle = 0;
+	customText.transform.angle = 5;
 	
 	itemsInScene.push(text1, text2, customText);
 	
