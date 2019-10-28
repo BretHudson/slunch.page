@@ -89,6 +89,7 @@ class V2 {
 	}
 	
 	rotateRad(rad) {
+		if (Math.abs(rad) < 0.00001) return this;
 		const cos = Math.cos(rad);
 		const sin = Math.sin(rad);
 		const x = this.x * cos - this.y * sin;
@@ -103,6 +104,10 @@ class V2 {
 	
 	compareAngles(other) {
 		return Math.atan2(other.y - this.y, other.x - this.x);
+	}
+	
+	compareAnglesDeg(other) {
+		return this.compareAngles(other) * 180 / Math.PI;
 	}
 	
 	compareDistance(other) {
@@ -146,24 +151,6 @@ class Rect {
 	constructor(x = 0, y = 0, w = 0, h = 0) {
 		this.pos = new V2();
 		this.size = new V2();
-		
-		const vectors = [ this.pos, this.size ];
-		vectors.forEach(obj => {
-			getMethods(obj) .forEach(m => {
-				const func = obj[m].bind(obj);
-				obj[m] = (...args) => {
-					func(...args);
-					this.recalculatePoints();
-				};
-			});
-		});
-		
-		this.corners = Array.from({ length: 4 }).map(v => new V2());
-		this.topLeft = this.corners[0];
-		this.topRight = this.corners[1];
-		this.bottomRight = this.corners[2];
-		this.bottomLeft = this.corners[3];
-		
 		this.angle = 0;
 		
 		this.x = x;
@@ -172,29 +159,9 @@ class Rect {
 		this.h = h;
 	}
 	
-	recalculatePoints() {
-		const baseOffset = _rectTempPos.set(this.w >> 1, this.h >> 1);
-		const offset = _rectTempPos2.setV2(baseOffset);
-		this.topLeft.set(-offset.x, -offset.y);
-		this.topRight.set(offset.x, -offset.y);
-		this.bottomRight.set(offset.x, offset.y);
-		this.bottomLeft.set(-offset.x, offset.y);
-		for (let i = 0; i < 4; ++i) {
-			if (this.angle !== 0) {
-				this.corners[i].rotateDeg(this.angle);
-			}
-			this.corners[i].addV2(this.pos);
-		}
-	}
-	
 	containsV2(v) {
-		let isInside = true;
-		for (let i = 0; i < 4; ++i) {
-			if (V2.getSide(testRect.corners[i], testRect.corners[(i + 1) % 4], v) < 0) {
-				isInside = false;
-				break;
-			}
-		}
+		const point = _rectTempPos.setV2(v).rotateDeg(-this.angle);
+		const isInside = ((point.x >= this.left) && (point.y >= this.top) && (point.x <= this.right) && (point.y <= this.bottom));
 		return isInside;
 	}
 	
@@ -226,30 +193,11 @@ class Rect {
 		this.move(v.x, v.y);
 	}
 	
-	set x(val) {
-		this.pos.x = val;
-		this.recalculatePoints();
-	}
-	
-	set y(val) {
-		this.pos.y = val;
-		this.recalculatePoints();
-	}
-	
-	set w(val) {
-		this.size.x = val;
-		this.recalculatePoints();
-	}
-	
-	set h(val) {
-		this.size.y = val;
-		this.recalculatePoints();
-	}
-	
-	set angle(val) {
-		this._angle = val;
-		this.recalculatePoints();
-	}
+	set x(val) { this.pos.x = val; }
+	set y(val) { this.pos.y = val; }
+	set w(val) { this.size.x = val; }
+	set h(val) { this.size.y = val; }
+	set angle(val) { this._angle = val; }
 	
 	get x() { return this.pos.x; }
 	get y() { return this.pos.y; }
@@ -257,10 +205,10 @@ class Rect {
 	get h() { return this.size.y; }
 	get angle() { return this._angle; }
 	
-	get left() { return this.topLeft.x; }
-	get top() { return this.topLeft.y; }
-	get right() { return this.bottomRight.x; }
-	get bottom() { return this.bottomRight.y; }
+	get left() { return this.pos.x - (this.w >> 1); }
+	get top() { return this.pos.y - (this.h >> 1); }
+	get right() { return this.pos.x + (this.w >> 1); }
+	get bottom() { return this.pos.y + (this.h >> 1); }
 };
 
 const Draw = {
@@ -280,10 +228,11 @@ const Draw = {
 		
 		ctx.restore();
 	},
-	rect: (x, y, w, h, color = 'magenta', fill = true, options = {}) => {
+	rect: (x, y, w, h, color = 'magenta', options = {}) => {
 		const { centered } = options;
 		const angle = options.angle || 0;
 		const absolute = options.absolute || false;
+		const stroke = options.stroke || 0;
 		
 		const offset = Draw.tempPos.set(w >> 1, h >> 1);
 		const centerPos = Draw.centerPos.set(x, y);
@@ -301,12 +250,13 @@ const Draw = {
 			ctx.translate(-centerPos.x, -centerPos.y);
 		}
 		
-		if (fill === true) {
-			ctx.fillStyle = color;
-			ctx.fillRect(drawPos.x, drawPos.y, w, h);
-		} else {
+		if (stroke > 0) {
+			ctx.lineWidth = stroke;
 			ctx.strokeStyle = color;
 			ctx.strokeRect(drawPos.x, drawPos.y, w, h);
+		} else {
+			ctx.fillStyle = color;
+			ctx.fillRect(drawPos.x, drawPos.y, w, h);
 		}
 		
 		ctx.restore();
@@ -490,11 +440,7 @@ const addCanvasEvents = () => {
 const getFont = size => ctx.font = `${size}pt "Bubblegum Sans"`;
 
 const drawTextWithShadow = (str, x, y, size, angle) => {
-	const offset = tempPos.set(size / 12, size / 12);
-	
-	if (angle !== 0)
-		offset.rotateDeg(angle);
-	
+	const offset = tempPos.set(size / 12, size / 12).rotateDeg(angle);
 	const options = { angle };
 	// Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
 	Draw.text(x, y, size, str, '#fff', options);
@@ -551,13 +497,20 @@ const createText = (str, x, y, size) => {
 		str: str,
 		transform: {
 			parent: null,
-			_pos: new V2(),
+			_temp: new V2(),
 			rect: new Rect(x, y, 100, 100),
-			drag: new V2(),
+			delta: {
+				pos: new V2(),
+				startAngle: 0,
+				angle: 0
+			},
 			_size: 0,
 			endDrag() {
-				this.rect.pos.addV2(this.drag);
-				this.drag.set(0, 0);
+				this.rect.pos.addV2(this.delta.pos);
+				this.delta.pos.set(0, 0);
+				
+				this.rect.angle += this.delta.angle - this.delta.startAngle;
+				this.delta.angle = this.delta.startAngle = 0;
 			},
 			_resize() {
 				const { width, height } = getSizeOfStr(this.parent.str, this.size);
@@ -577,10 +530,10 @@ const createText = (str, x, y, size) => {
 				this._resize();
 			},
 			get pos() {
-				return this._pos.setV2(this.rect.pos).addV2(this.drag);
+				return this._temp.setV2(this.rect.pos).addV2(this.delta.pos);
 			},
 			get angle() {
-				return this.rect.angle;
+				return this.rect.angle + this.delta.angle - this.delta.startAngle;
 			},
 			set angle(val) {
 				this.rect.angle = val;
@@ -628,8 +581,13 @@ const updateBegin = dt => {
 
 const update = dt => {
 	const selectedTransform = selectedItem.transform;
+	if (mouse.pressed === true) {
+		selectedTransform.delta.startAngle = customText.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
+	}
+	
 	if (mouse.held === true) {
-		selectedTransform.drag.setV2(mouse.drag);
+		// selectedTransform.delta.pos.setV2(mouse.drag);
+		selectedTransform.delta.angle = customText.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
 	}
 	
 	const text1 = document.querySelector('input[name=text-top]').value;
@@ -656,7 +614,7 @@ const updateEnd = dt => {
 const DEBUG_RENDER_IMAGES = false;
 const DEBUG_RENDER_PROJECTION = false;
 const render = dt => {
-	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', true, {
+	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', {
 		absolute: true
 	});
 	
@@ -681,10 +639,11 @@ const render = dt => {
 	
 	if (false) {
 		const { str, transform } = selectedItem;
-		const { pos, drag, size, angle, width, height } = transform;
+		const { pos, delta, size, angle, width, height } = transform;
 		
-		Draw.rect(pos.x, pos.y, width, height, 'red', true, {
-			centered: true
+		Draw.rect(pos.x, pos.y, width, height, 'red', {
+			centered: true,
+			angle: transform.angle
 		});
 	}
 	
@@ -696,22 +655,19 @@ const render = dt => {
 		}
 	}
 	
-	const testRect = customText.transform.rect;
+	const transform = customText.transform;
 	
 	{
-		const { topLeft, topRight, bottomRight, bottomLeft } = testRect;
-		const colors = [ 'purple', 'orange', 'blue', 'green' ];
+		Draw.rect(transform.pos.x, transform.pos.y, transform.width, transform.height, 'orange', {
+			angle: customText.transform.angle,
+			centered: true,
+			stroke: customText.transform.size / 25
+		});
 		
-		for (let l = 0; l < 4; ++l) {
-			const v1 = tempPos.setV2(testRect.corners[l]).addV2(customText.transform.drag);
-			const v2 = tempPos2.setV2(testRect.corners[(l + 1) % 4]).addV2(customText.transform.drag);
-			Draw.line(v1.x, v1.y, v2.x, v2.y, colors[l], 5);
-		}
-		
-		tempPos.setV2(mouse.pos).subtractV2(customText.transform.drag);
-		const isInside = testRect.containsV2(tempPos);
+		tempPos.setV2(mouse.pos).subtractV2(customText.transform.delta.pos);
+		const isInside = transform.rect.containsV2(tempPos);
 		const color = (isInside) ? 'green' : 'red';
-		Draw.circle(testRect.x, testRect.y, 20, color);
+		Draw.circle(transform.pos.x, transform.pos.y, 20, color);
 	}
 	
 	Draw.circle(mouse.pos.x, mouse.pos.y, 15, 'blue');
@@ -720,10 +676,10 @@ const render = dt => {
 	
 	// if (draggingRect === true)
 	{
-		const drawPos = tempPos3.setV2(testRect.pos);
+		const drawPos = tempPos3.setV2(transform.pos);
 		
-		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(testRect.pos);
-		const centerToCorner = tempPos2.setV2(testRect.size).multiplyScalar(0.5).rotateDeg(testRect.angle);
+		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(transform.pos).rotateDeg(-transform.angle);
+		const centerToCorner = tempPos2.setV2(transform.rect.size).multiplyScalar(0.5);
 		
 		centerToCorner.x = centerToCorner.x * Math.sign(centerToMouse.x);
 		centerToCorner.y = centerToCorner.y * Math.sign(centerToMouse.y);
@@ -731,25 +687,9 @@ const render = dt => {
 		const mouseIsRightOfLine = V2.getSide(V2.zero, centerToCorner, centerToMouse) > 0;
 		const mouseIsRightOfLineColor = mouseIsRightOfLine ? 'cyan' : 'magenta';
 		
+		centerToCorner.rotateDeg(transform.angle);
 		Draw.line(drawPos.x, drawPos.y, mouse.pos.x, mouse.pos.y, 'white', 4);
 		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, mouseIsRightOfLineColor, 8);
-		
-		if (false)
-		{
-			const proj = V2.project(centerToMouse, centerToCorner);
-			proj.x = Math.abs(proj.x);
-			proj.y = Math.abs(proj.y);
-			
-			const mag = proj.magnitude;
-			if (mag < 100)
-				proj.normalize().multiplyScalar(100);
-			
-			Draw.line(testRect.pos.x, testRect.pos.y, proj.x * Math.sign(centerToMouse.x) + testRect.pos.x, proj.y * Math.sign(centerToMouse.y) + testRect.pos.y, 'yellow', 4);
-			
-			proj.multiplyScalar(2);
-			proj.rotateDeg(-testRect.angle);
-			customText.transform.size = proj.y * HEIGHT_TO_SIZE;
-		}
 		
 		const sign = Math.sign(centerToMouse.x * centerToMouse.y);
 		let useHeight;
@@ -759,20 +699,18 @@ const render = dt => {
 			useHeight = !mouseIsRightOfLine;
 		}
 		
+		let newHeight;
 		if (useHeight) {
-			const height = Math.max(Math.abs(centerToMouse.y) * 2, 100);
-			customText.transform.size = height * HEIGHT_TO_SIZE;
+			newHeight = Math.max(Math.abs(centerToMouse.y) * 2, 100);
 		} else {
 			const width = Math.max(Math.abs(centerToMouse.x) * 2, 100);
-			const height = width * testRect.h / testRect.w;
-			customText.transform.size = height * HEIGHT_TO_SIZE;
+			newHeight = width * transform.height / transform.width;
 		}
+		customText.transform.size = newHeight * HEIGHT_TO_SIZE;
 	}
 };
 
 let draggingRect = false;
-const testRect = new Rect(800, 200, 200, 100);
-testRect.rotate(15);
 
 const loop = t => {
 	if (lastRender === undefined)
@@ -838,8 +776,8 @@ window.addEventListener('DOMContentLoaded', e => {
 	const text2 = createText('is served', 300, 190, 50);
 	text2.transform.angle = angle;
 	
-	customText = createText('Yay', 0, 0, 100);
-	customText.transform.angle = 5;
+	customText = createText('Yay', 0, 0, 300);
+	customText.transform.angle = 30;
 	
 	itemsInScene.push(text1, text2, customText);
 	
