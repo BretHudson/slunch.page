@@ -312,6 +312,7 @@ const ITEM_STATES = strArrToObj([
 	'SELECTED',
 	'MOVING',
 	'ROTATING',
+	'RESIZING',
 	
 	'NUM'
 ]);
@@ -495,12 +496,26 @@ const drawTextItem = textObj => {
 	const { str, transform } = textObj;
 	const { pos, size, width, height, angle } = transform;
 	
+	const drawWidth = Math.max(width, size * 0.25);
+	
 	if (textObj.attr.hover) {
-		Draw.rect(pos.x, pos.y, width, height, 'rgba(255, 255, 255, 0.25)', {
+		Draw.rect(pos.x, pos.y, drawWidth, height, 'rgba(255, 255, 255, 0.25)', {
 			centered: true,
 			angle
 		});
-		Draw.rect(pos.x, pos.y, width, height, 'white', {
+		Draw.rect(pos.x, pos.y, drawWidth, height, 'white', {
+			centered: true,
+			angle,
+			stroke: 3
+		});
+	}
+	
+	if (textObj.state === ITEM_STATES.SELECTED) {
+		Draw.rect(pos.x, pos.y, drawWidth, height, 'rgba(255, 255, 255, 0.25)', {
+			centered: true,
+			angle
+		});
+		Draw.rect(pos.x, pos.y, drawWidth, height, 'white', {
 			centered: true,
 			angle,
 			stroke: 3
@@ -509,6 +524,18 @@ const drawTextItem = textObj => {
 	
 	// drawTextWithShadow(str, pos.x, pos.y, size, angle);
 	drawTextWithOutline(str, pos.x, pos.y, size, angle);
+	
+	const offset = tempPos.set(0, -size * 1.3).rotateDeg(angle);
+	const circlePos = tempPos2.setV2(pos).addV2(offset);
+	
+	switch (textObj.state) {
+		case ITEM_STATES.SELECTED:
+		case ITEM_STATES.ROTATING: {
+			const color = (textObj.attr.hoverRotate) ? 'lime' : 'grey';
+			Draw.circle(circlePos.x, circlePos.y, 30, 'white');
+			Draw.circle(circlePos.x, circlePos.y, 25, color);
+		} break;
+	}
 };
 
 const ITEMS = {
@@ -516,14 +543,25 @@ const ITEMS = {
 };
 
 const getSizeOfStr = (str, size) => {
-	measureDiv.textContent = str;
-	measureDiv.style.font = getFont(size);
-	
-	const rect = measureDiv.getBoundingClientRect();
-	return {
-		width: rect.width,
-		height: rect.height
-	};
+	if (str.length > 0) {
+		measureDiv.textContent = str;
+		measureDiv.style.font = getFont(size);
+		
+		const rect = measureDiv.getBoundingClientRect();
+		return {
+			width: rect.width,
+			height: rect.height
+		};
+	} else {
+		measureDiv.textContent = 'a';
+		measureDiv.style.font = getFont(size);
+		
+		const rect = measureDiv.getBoundingClientRect();
+		return {
+			width: 0,
+			height: rect.height
+		};
+	}
 };
 
 const HEIGHT_TO_SIZE = 1 / 1.54;
@@ -533,17 +571,19 @@ const createText = (str, x, y, size) => {
 		str: str,
 		state: ITEM_STATES.NONE,
 		attr: {
-			hover: false
+			hover: false,
+			hoverRotate: false
 		},
 		transform: {
 			parent: null,
 			_temp: new V2(),
 			rect: new Rect(x, y, 100, 100),
 			delta: {
+				transform: null,
 				pos: new V2(),
 				startAngle: 0,
 				angle: 0,
-				beginRotate: angle => {
+				beginRotate: function(angle) {
 					this.angle = angle;
 					this.startAngle = angle;
 				}
@@ -585,8 +625,14 @@ const createText = (str, x, y, size) => {
 		}
 	};
 	
-	text.transform.parent = text;
-	text.transform.size = size;
+	const { transform } = text;
+	const { delta } = transform;
+	
+	transform.parent = text;
+	transform.size = size;
+	delta.transform = transform;
+	
+	delta.beginRotate = delta.beginRotate.bind(delta);
 	
 	text.add = c => {
 		text.str += c;
@@ -641,6 +687,7 @@ const updateStateNone = dt => {
 	for (let i = itemsInScene.length; i--; ) {
 		const attr = itemsInScene[i];
 		attr.hover = false;
+		attr.hoverRotate = false;
 	}
 	
 	let hoveredItem = null;
@@ -661,20 +708,37 @@ const updateStateNone = dt => {
 };
 
 const updateStateItemSelected = dt => {
+	for (let i = itemsInScene.length; i--; ) {
+		const attr = itemsInScene[i];
+		attr.hover = false;
+		attr.hoverRotate = false;
+	}
+	
 	const selectedTransform = selectedItem.transform;
+	
+	const { transform } = selectedItem;
+	const { pos, size, angle } = transform;
+	
+	const offset = tempPos.set(0, -size * 1.3).rotateDeg(angle);
+	const circlePos = tempPos2.setV2(pos).addV2(offset);
+	
+	selectedItem.attr.hoverRotate = (circlePos.compareDistance(mouse.pos) < 30);
+	
 	if (mouse.pressed === true) {
 		// TODO(bret): What kind of press?
 		
 		if (false) {
 			
+		} else if (selectedItem.attr.hoverRotate) {
+			selectedItem.state = ITEM_STATES.ROTATING;
+			const startAngle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos);
+			selectedTransform.delta.beginRotate(startAngle);
 		} else if (selectedTransform.rect.containsV2(mouse.pos)) {
 			selectedItem.state = ITEM_STATES.MOVING;
 		} else {
 			deselectItem();
+			// TODO(bret): Check if size is 0; if so, remove from the scene!
 		}
-		
-		const startAngle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90
-		selectedTransform.delta.beginRotate(startAngle);
 	}
 	
 	if (selectedItem.state === ITEM_STATES.NONE)
@@ -691,7 +755,7 @@ const updateStateItemSelected = dt => {
 			} break;
 			
 			case ITEM_STATES.ROTATING: {
-				selectedTransform.delta.angle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
+				selectedTransform.delta.angle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos);
 			} break;
 		}
 	}
@@ -716,11 +780,6 @@ const updateStateItemSelected = dt => {
 };
 
 const update = dt => {
-	const text1 = document.querySelector('input[name=text-top]').value;
-	const text2 = document.querySelector('input[name=text-bottom]').value;
-	itemsInScene[0].str = text1;
-	itemsInScene[1].str = text2;
-	
 	switch (appState) {
 		case APP_STATES.NONE: {
 			updateStateNone(dt);
@@ -772,12 +831,8 @@ const render = dt => {
 		});
 	}
 	
-	if (false) {
-		drawTextItem(customText);
-	} else {
-		for (let i = itemsInScene.length; i--; ) {
-			drawTextItem(itemsInScene[i]);
-		}
+	for (let i = itemsInScene.length; i--; ) {
+		drawTextItem(itemsInScene[i]);
 	}
 	
 	return;
@@ -895,7 +950,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	addDragDropEvents();
 	
-	const angle = 45;
+	const angle = 10;
 	
 	const text1 = createText('SLUNCH', -300, -160, 100);
 	text1.transform.angle = -angle;
@@ -907,7 +962,10 @@ window.addEventListener('DOMContentLoaded', e => {
 	customText.transform.angle = 30;
 	
 	// itemsInScene.push(text1, text2, customText);
-	itemsInScene.push(text1, text2);
+	// itemsInScene.push(text1, text2);
+	itemsInScene.push(text1);
+	
+	selectItem(text1);
 	
 	window.requestAnimationFrame(loop);
 });
