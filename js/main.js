@@ -255,7 +255,9 @@ const Draw = {
 		
 		ctx.restore();
 	},
-	circle: (x, y, radius, color = 'magenta') => {
+	circle: (x, y, radius, color = 'magenta', options = {}) => {
+		const stroke = options.stroke || 0;
+		
 		ctx.fillStyle = color;
 		
 		ctx.save();
@@ -263,7 +265,14 @@ const Draw = {
 		
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, 360);
-		ctx.fill();
+		
+		if (stroke > 0) {
+			ctx.lineWidth = stroke;
+			ctx.strokeStyle = color;
+			ctx.stroke();
+		} else {
+			ctx.fill();
+		}
 		
 		ctx.restore();
 	},
@@ -294,6 +303,13 @@ const Draw = {
 		ctx.restore();
 	}
 };
+
+const CORNERS = [
+	{ x: 1, y: -1 },
+	{ x: 1, y: 1 },
+	{ x: -1, y: 1 },
+	{ x: -1, y: -1 }
+];
 
 const strArrToObj = arr => arr.reduce((acc, str, index) => {
 	acc[str.toUpperCase()] = index;
@@ -494,7 +510,7 @@ const resize = e => {
 
 const drawTextItem = textObj => {
 	const { str, transform } = textObj;
-	const { pos, size, width, height, angle } = transform;
+	const { pos, rect, size, width, height, angle } = transform;
 	
 	const drawWidth = Math.max(width, size * 0.25);
 	
@@ -522,15 +538,33 @@ const drawTextItem = textObj => {
 		});
 	}
 	
+	switch (textObj.state) {
+		case ITEM_STATES.SELECTED:
+		case ITEM_STATES.ROTATING: {
+			const offset = tempPos.setV2(rect.size).divideScalar(2);
+			const corner = tempPos2;
+			const color = textObj.attr.hoverResize ? 'magenta' : 'white';
+			CORNERS.forEach(c => {
+				corner.setV2(offset);
+				corner.x *= c.x;
+				corner.y *= c.y;
+				corner.rotateDeg(angle).addV2(pos);
+				Draw.circle(corner.x, corner.y, 15, color, {
+					stroke: 4
+				});
+			});
+		}
+	}
+	
 	// drawTextWithShadow(str, pos.x, pos.y, size, angle);
 	drawTextWithOutline(str, pos.x, pos.y, size, angle);
-	
-	const offset = tempPos.set(0, -size * 1.3).rotateDeg(angle);
-	const circlePos = tempPos2.setV2(pos).addV2(offset);
 	
 	switch (textObj.state) {
 		case ITEM_STATES.SELECTED:
 		case ITEM_STATES.ROTATING: {
+			const offset = tempPos.set(0, -((rect.h * 0.5) + 50)).rotateDeg(angle);
+			const circlePos = tempPos2.setV2(pos).addV2(offset);
+			
 			const color = (textObj.attr.hoverRotate) ? 'lime' : 'grey';
 			Draw.circle(circlePos.x, circlePos.y, 30, 'white');
 			Draw.circle(circlePos.x, circlePos.y, 25, color);
@@ -572,7 +606,8 @@ const createText = (str, x, y, size) => {
 		state: ITEM_STATES.NONE,
 		attr: {
 			hover: false,
-			hoverRotate: false
+			hoverRotate: false,
+			hoverResize: false
 		},
 		transform: {
 			parent: null,
@@ -685,8 +720,9 @@ const updateBegin = dt => {
 
 const updateStateNone = dt => {
 	for (let i = itemsInScene.length; i--; ) {
-		const attr = itemsInScene[i];
+		const { attr } = itemsInScene[i];
 		attr.hover = false;
+		attr.hoverResize = false;
 		attr.hoverRotate = false;
 	}
 	
@@ -707,28 +743,107 @@ const updateStateNone = dt => {
 	}
 };
 
+const resizeItem = item => {
+	const transform = item.transform;
+	
+	{
+		Draw.rect(transform.pos.x, transform.pos.y, transform.width, transform.height, '#ccc', {
+			angle: selectedItem.transform.angle,
+			centered: true,
+			stroke: Math.max(5, selectedItem.transform.size / 75)
+		});
+		
+		tempPos.setV2(mouse.pos).subtractV2(selectedItem.transform.delta.pos);
+		const isInside = transform.rect.containsV2(tempPos);
+		const color = (isInside) ? 'green' : 'red';
+		Draw.circle(transform.pos.x, transform.pos.y, 20, color);
+	}
+	
+	Draw.circle(mouse.pos.x, mouse.pos.y, 15, 'blue');
+	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
+	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
+	
+	// if (draggingRect === true)
+	{
+		const drawPos = tempPos3.setV2(transform.pos);
+		
+		const centerToMouse = tempPos.setV2(mouse.pos).subtractV2(transform.pos).rotateDeg(-transform.angle);
+		const centerToCorner = tempPos2.setV2(transform.rect.size).multiplyScalar(0.5);
+		
+		centerToCorner.x = centerToCorner.x * Math.sign(centerToMouse.x);
+		centerToCorner.y = centerToCorner.y * Math.sign(centerToMouse.y);
+		
+		const mouseIsRightOfLine = V2.getSide(V2.zero, centerToCorner, centerToMouse) > 0;
+		const mouseIsRightOfLineColor = mouseIsRightOfLine ? 'cyan' : 'magenta';
+		
+		centerToCorner.rotateDeg(transform.angle);
+		Draw.line(drawPos.x, drawPos.y, mouse.pos.x, mouse.pos.y, 'white', 4);
+		Draw.line(drawPos.x, drawPos.y, drawPos.x + centerToCorner.x, drawPos.y + centerToCorner.y, mouseIsRightOfLineColor, 8);
+		
+		const sign = Math.sign(centerToMouse.x * centerToMouse.y);
+		let useHeight;
+		if (sign === 1) {
+			useHeight = mouseIsRightOfLine;
+		} else {
+			useHeight = !mouseIsRightOfLine;
+		}
+		
+		let newHeight;
+		if (useHeight) {
+			newHeight = Math.abs(centerToMouse.y) * 2;
+		} else {
+			const width = Math.abs(centerToMouse.x) * 2;
+			newHeight = width * transform.height / transform.width;
+		}
+		newHeight = Math.max(newHeight, 50);
+		selectedItem.transform.size = newHeight * HEIGHT_TO_SIZE;
+	}
+}
+
 const updateStateItemSelected = dt => {
 	for (let i = itemsInScene.length; i--; ) {
-		const attr = itemsInScene[i];
+		const { attr } = itemsInScene[i];
 		attr.hover = false;
+		attr.hoverResize = false;
 		attr.hoverRotate = false;
 	}
 	
 	const selectedTransform = selectedItem.transform;
 	
 	const { transform } = selectedItem;
-	const { pos, size, angle } = transform;
+	const { pos, rect, size, angle } = transform;
 	
-	const offset = tempPos.set(0, -size * 1.3).rotateDeg(angle);
-	const circlePos = tempPos2.setV2(pos).addV2(offset);
+	{
+		console.log();
+		const offset = tempPos.set(0, -((rect.h * 0.5) + 50)).rotateDeg(angle);
+		const circlePos = tempPos2.setV2(pos).addV2(offset);
+		
+		selectedItem.attr.hoverRotate =
+			(circlePos.compareDistance(mouse.pos) < 30);
+	}
 	
-	selectedItem.attr.hoverRotate = (circlePos.compareDistance(mouse.pos) < 30);
+	{
+		const offset = tempPos.setV2(rect.size).divideScalar(2);
+		const corner = tempPos2;
+		for (let c = 0; c < 4; ++c) {
+			corner.setV2(offset);
+			corner.x *= CORNERS[c].x;
+			corner.y *= CORNERS[c].y;
+			corner.rotateDeg(angle).addV2(pos);
+			if (corner.compareDistance(mouse.pos) < 18) {
+				selectedItem.attr.hoverResize = true;
+				break;
+			}
+		}
+	}
 	
 	if (mouse.pressed === true) {
 		// TODO(bret): What kind of press?
 		
 		if (false) {
 			
+		} else if (selectedItem.attr.hoverResize) {
+			selectedItem.state = ITEM_STATES.RESIZING;
 		} else if (selectedItem.attr.hoverRotate) {
 			selectedItem.state = ITEM_STATES.ROTATING;
 			const startAngle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos);
@@ -757,6 +872,10 @@ const updateStateItemSelected = dt => {
 			case ITEM_STATES.ROTATING: {
 				selectedTransform.delta.angle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos);
 			} break;
+			
+			case ITEM_STATES.RESIZING: {
+				resizeItem(selectedItem);
+			} break;
 		}
 	}
 	
@@ -769,13 +888,6 @@ const updateStateItemSelected = dt => {
 		}
 		
 		selectedItem.state = ITEM_STATES.SELECTED;
-	}
-	
-	const rect = selectedItem.transform.rect;
-	if (mouse.pressed) {
-		if (rect.containsV2(mouse.pos)) {
-			draggingRect = true;
-		}
 	}
 };
 
@@ -856,7 +968,6 @@ const render = dt => {
 	Draw.circle(mouse.pos.x, mouse.pos.y, 10, 'white');
 	Draw.circle(mouse.pos.x, mouse.pos.y, 5, 'blue');
 	
-	// if (draggingRect === true)
 	{
 		const drawPos = tempPos3.setV2(transform.pos);
 		
@@ -891,8 +1002,6 @@ const render = dt => {
 		selectedItem.transform.size = newHeight * HEIGHT_TO_SIZE;
 	}
 };
-
-let draggingRect = false;
 
 const loop = t => {
 	if (lastRender === undefined)
@@ -958,14 +1067,15 @@ window.addEventListener('DOMContentLoaded', e => {
 	const text2 = createText('is served', 300, 190, 50);
 	text2.transform.angle = angle;
 	
-	customText = createText('Yay', 0, 0, 300);
-	customText.transform.angle = 30;
+	customText = createText('Yay', 0, 0, 100);
+	customText.transform.angle = 0;
 	
 	// itemsInScene.push(text1, text2, customText);
 	// itemsInScene.push(text1, text2);
-	itemsInScene.push(text1);
+	// itemsInScene.push(text1);
+	itemsInScene.push(customText);
 	
-	selectItem(text1);
+	selectItem(customText);
 	
 	window.requestAnimationFrame(loop);
 });
