@@ -136,15 +136,6 @@ class V2 {
 V2.zero = new V2();
 V2.one = new V2(1, 1);
 
-const getMethods = (obj) => {
-	const properties = new Set();
-	let currentObj = obj;
-	do {
-		Object.getOwnPropertyNames(currentObj).map(item => properties.add(item));
-	} while ((currentObj = Object.getPrototypeOf(currentObj)));
-	return [...properties.keys()].filter(item => typeof obj[item] === 'function');
-}
-
 const _rectTempPos = new V2();
 const _rectTempPos2 = new V2();
 class Rect {
@@ -160,7 +151,7 @@ class Rect {
 	}
 	
 	containsV2(v) {
-		const point = _rectTempPos.setV2(v).rotateDeg(-this.angle);
+		const point = _rectTempPos.setV2(this.pos).subtractV2(v).rotateDeg(-this.angle).addV2(this.pos);
 		const isInside = ((point.x >= this.left) && (point.y >= this.top) && (point.x <= this.right) && (point.y <= this.bottom));
 		return isInside;
 	}
@@ -219,6 +210,7 @@ const Draw = {
 		ctx.save();
 		ctx.translate(canvasCenter.x, canvasCenter.y);
 		
+		ctx.setLineDash([5, 15]);
 		ctx.strokeStyle = color;
 		ctx.lineWidth  = lineWidth;
 		ctx.beginPath();
@@ -253,6 +245,8 @@ const Draw = {
 		if (stroke > 0) {
 			ctx.lineWidth = stroke;
 			ctx.strokeStyle = color;
+			// const size = 1;
+			// ctx.setLineDash([size * stroke, size * 3 * stroke]);
 			ctx.strokeRect(drawPos.x, drawPos.y, w, h);
 		} else {
 			ctx.fillStyle = color;
@@ -300,6 +294,29 @@ const Draw = {
 		ctx.restore();
 	}
 };
+
+const strArrToObj = arr => arr.reduce((acc, str, index) => {
+	acc[str.toUpperCase()] = index;
+	return acc;
+}, {});
+
+const APP_STATES = strArrToObj([
+	'NONE',
+	'ITEM_SELECTED',
+	
+	'NUM'
+]);
+
+const ITEM_STATES = strArrToObj([
+	'NONE',
+	'SELECTED',
+	'MOVING',
+	'ROTATING',
+	
+	'NUM'
+]);
+
+let appState = APP_STATES.NONE;
 
 let mainElem;
 let uploadForm;
@@ -442,8 +459,15 @@ const getFont = size => ctx.font = `${size}pt "Bubblegum Sans"`;
 const drawTextWithShadow = (str, x, y, size, angle) => {
 	const offset = tempPos.set(size / 12, size / 12).rotateDeg(angle);
 	const options = { angle };
-	// Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
+	Draw.text(x + offset.x, y + offset.y, size, str, '#C5C5C5', options);
 	Draw.text(x, y, size, str, '#fff', options);
+}
+
+const drawTextWithOutline = (str, x, y, size, angle) => {
+	const options = { angle, stroke: size / 8 };
+	Draw.text(x, y, size, str, '#000', options);
+	delete options.stroke;
+	Draw.text(x, y, size, str, '#ff0', options);
 }
 
 const canvasSize = new V2();
@@ -469,10 +493,22 @@ const resize = e => {
 
 const drawTextItem = textObj => {
 	const { str, transform } = textObj;
-	const { pos, drag, size, angle } = transform;
+	const { pos, size, width, height, angle } = transform;
 	
-	const drawPos = tempPos.setV2(pos);
-	drawTextWithShadow(str, drawPos.x, drawPos.y, size, angle);
+	if (textObj.attr.hover) {
+		Draw.rect(pos.x, pos.y, width, height, 'rgba(255, 255, 255, 0.25)', {
+			centered: true,
+			angle
+		});
+		Draw.rect(pos.x, pos.y, width, height, 'white', {
+			centered: true,
+			angle,
+			stroke: 3
+		});
+	}
+	
+	// drawTextWithShadow(str, pos.x, pos.y, size, angle);
+	drawTextWithOutline(str, pos.x, pos.y, size, angle);
 };
 
 const ITEMS = {
@@ -495,6 +531,10 @@ const createText = (str, x, y, size) => {
 	const text = {
 		type: ITEMS.TEXT,
 		str: str,
+		state: ITEM_STATES.NONE,
+		attr: {
+			hover: false
+		},
 		transform: {
 			parent: null,
 			_temp: new V2(),
@@ -502,7 +542,11 @@ const createText = (str, x, y, size) => {
 			delta: {
 				pos: new V2(),
 				startAngle: 0,
-				angle: 0
+				angle: 0,
+				beginRotate: angle => {
+					this.angle = angle;
+					this.startAngle = angle;
+				}
 			},
 			_size: 0,
 			endDrag() {
@@ -558,8 +602,22 @@ const createText = (str, x, y, size) => {
 };
 
 let customText;
-let selectedItem = customText;
+let selectedItem = null;
 const itemsInScene = [];
+
+const selectItem = item => {
+	selectedItem = item;
+	
+	selectedItem.state = ITEM_STATES.SELECTED;
+	
+	appState = APP_STATES.ITEM_SELECTED;
+};
+
+const deselectItem = () => {
+	appState = APP_STATES.NONE;
+	
+	selectedItem.state = ITEM_STATES.NONE;
+};
 
 let lastRender;
 const updateBegin = dt => {
@@ -579,31 +637,98 @@ const updateBegin = dt => {
 	}
 };
 
-const update = dt => {
+const updateStateNone = dt => {
+	for (let i = itemsInScene.length; i--; ) {
+		const attr = itemsInScene[i];
+		attr.hover = false;
+	}
+	
+	let hoveredItem = null;
+	for (let i = itemsInScene.length; i--; ) {
+		const { attr, transform } = itemsInScene[i];
+		const { rect } = transform;
+		if (attr.hover = rect.containsV2(mouse.pos)) {
+			hoveredItem = itemsInScene[i];
+			break;
+		}
+	}
+	
+	if (mouse.pressed) {
+		if (hoveredItem !== null) {
+			selectItem(hoveredItem);
+		}
+	}
+};
+
+const updateStateItemSelected = dt => {
 	const selectedTransform = selectedItem.transform;
 	if (mouse.pressed === true) {
-		selectedTransform.delta.startAngle = customText.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
+		// TODO(bret): What kind of press?
+		
+		if (false) {
+			
+		} else if (selectedTransform.rect.containsV2(mouse.pos)) {
+			selectedItem.state = ITEM_STATES.MOVING;
+		} else {
+			deselectItem();
+		}
+		
+		const startAngle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90
+		selectedTransform.delta.beginRotate(startAngle);
 	}
+	
+	if (selectedItem.state === ITEM_STATES.NONE)
+		return;
 	
 	if (mouse.held === true) {
-		// selectedTransform.delta.pos.setV2(mouse.drag);
-		selectedTransform.delta.angle = customText.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
+		switch (selectedItem.state) {
+			case ITEM_STATES.SELECTED: {
+				// NOTE(bret): Do nothing
+			} break;
+			
+			case ITEM_STATES.MOVING: {
+				selectedTransform.delta.pos.setV2(mouse.drag);
+			} break;
+			
+			case ITEM_STATES.ROTATING: {
+				selectedTransform.delta.angle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos) + 90;
+			} break;
+		}
 	}
 	
+	if (mouse.released === true) {
+		switch (selectedItem.state) {
+			case ITEM_STATES.MOVING:
+			case ITEM_STATES.ROTATING: {
+				selectedTransform.endDrag();
+			} break;
+		}
+		
+		selectedItem.state = ITEM_STATES.SELECTED;
+	}
+	
+	const rect = selectedItem.transform.rect;
+	if (mouse.pressed) {
+		if (rect.containsV2(mouse.pos)) {
+			draggingRect = true;
+		}
+	}
+};
+
+const update = dt => {
 	const text1 = document.querySelector('input[name=text-top]').value;
 	const text2 = document.querySelector('input[name=text-bottom]').value;
 	itemsInScene[0].str = text1;
 	itemsInScene[1].str = text2;
 	
-	if (mouse.released === true) {
-		selectedTransform.endDrag();
-	}
-	
-	const testRect = customText.transform.rect;
-	if (mouse.pressed) {
-		if (testRect.containsV2(mouse.pos)) {
-			draggingRect = true;
-		}
+	switch (appState) {
+		case APP_STATES.NONE: {
+			updateStateNone(dt);
+		} break;
+		
+		case APP_STATES.ITEM_SELECTED: {
+			updateStateItemSelected(dt);
+		} break;
 	}
 };
 
@@ -611,7 +736,7 @@ const updateEnd = dt => {
 	mouse.state &= ~1;
 };
 
-const DEBUG_RENDER_IMAGES = false;
+const DEBUG_RENDER_IMAGES = true;
 const DEBUG_RENDER_PROJECTION = false;
 const render = dt => {
 	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', {
@@ -647,7 +772,7 @@ const render = dt => {
 		});
 	}
 	
-	if (true) {
+	if (false) {
 		drawTextItem(customText);
 	} else {
 		for (let i = itemsInScene.length; i--; ) {
@@ -655,16 +780,18 @@ const render = dt => {
 		}
 	}
 	
-	const transform = customText.transform;
+	return;
+	
+	const transform = selectedItem.transform;
 	
 	{
-		Draw.rect(transform.pos.x, transform.pos.y, transform.width, transform.height, 'orange', {
-			angle: customText.transform.angle,
+		Draw.rect(transform.pos.x, transform.pos.y, transform.width, transform.height, '#ccc', {
+			angle: selectedItem.transform.angle,
 			centered: true,
-			stroke: customText.transform.size / 25
+			stroke: Math.max(5, selectedItem.transform.size / 75)
 		});
 		
-		tempPos.setV2(mouse.pos).subtractV2(customText.transform.delta.pos);
+		tempPos.setV2(mouse.pos).subtractV2(selectedItem.transform.delta.pos);
 		const isInside = transform.rect.containsV2(tempPos);
 		const color = (isInside) ? 'green' : 'red';
 		Draw.circle(transform.pos.x, transform.pos.y, 20, color);
@@ -706,7 +833,7 @@ const render = dt => {
 			const width = Math.max(Math.abs(centerToMouse.x) * 2, 100);
 			newHeight = width * transform.height / transform.width;
 		}
-		customText.transform.size = newHeight * HEIGHT_TO_SIZE;
+		selectedItem.transform.size = newHeight * HEIGHT_TO_SIZE;
 	}
 };
 
@@ -768,7 +895,7 @@ window.addEventListener('DOMContentLoaded', e => {
 	
 	addDragDropEvents();
 	
-	const angle = 10;
+	const angle = 45;
 	
 	const text1 = createText('SLUNCH', -300, -160, 100);
 	text1.transform.angle = -angle;
@@ -779,9 +906,8 @@ window.addEventListener('DOMContentLoaded', e => {
 	customText = createText('Yay', 0, 0, 300);
 	customText.transform.angle = 30;
 	
-	itemsInScene.push(text1, text2, customText);
-	
-	selectedItem = customText;
+	// itemsInScene.push(text1, text2, customText);
+	itemsInScene.push(text1, text2);
 	
 	window.requestAnimationFrame(loop);
 });
