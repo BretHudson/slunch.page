@@ -49,6 +49,12 @@ header {
   margin-bottom: 2rem;
   user-select: none;
 }
+.measureDivParent {
+  position: relative;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+}
 main {
   position: relative;
   width: 720px;

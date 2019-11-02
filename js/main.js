@@ -1,5 +1,5 @@
-Element.prototype.on = function(type, func, capture) {
-	type.split(' ').forEach(t => this.addEventListener(t, func, capture));
+Element.prototype.on = function(type, func, options) {
+	type.split(' ').forEach(t => this.addEventListener(t, func, options));
 };
 document.on = Element.prototype.on;
 
@@ -436,16 +436,34 @@ const addCanvasEvents = () => {
 		mouse.posRaw.set(e.clientX, e.clientY).subtractV2(canvasScreenPos);
 	};
 	
+	const setTouchPosRaw = e => {
+		const touch = e.touches[0];
+		mouse.posRaw.set(touch.clientX, touch.clientY).subtractV2(canvasScreenPos);
+	};
+	
 	canvas.on('mousedown', e => {
 		mouse.state = 3;
 		setMousePosRaw(e);
 	});
 	
+	canvas.on('touchstart', e => {
+		mouse.state = 3;
+		setTouchPosRaw(e);
+	}, {
+		passive: true
+	});
+	
 	document.on('mousemove', setMousePosRaw);
+	
+	document.on('touchmove', setTouchPosRaw);
 	
 	document.on('mouseup', e => {
 		mouse.state = 1;
 		setMousePosRaw(e);
+	});
+	
+	document.on('touchend', e => {
+		mouse.state = 1;
 	});
 	
 	document.on('keydown', e => {
@@ -1020,18 +1038,24 @@ const loop = t => {
 };
 
 window.addEventListener('DOMContentLoaded', e => {
-	measureDiv.style.visibility = 'hidden';
-	measureDiv.style.position = 'absolute';
-	measureDiv.style.whiteSpace = 'pre';
-	measureDiv.style.float = 'left';
-	document.body.appendChild(measureDiv);
-	
 	hue = (new Date() / 10);
 	window.requestAnimationFrame(change);
 	
 	mainElem = document.querySelector('main');
 	
 	uploadForm = document.querySelector('label[for="image-upload"]');
+	
+	const measureDivParent = document.createElement('div');
+	measureDivParent.classList.add('measureDivParent');
+	mainElem.appendChild(measureDivParent);
+	
+	measureDiv.style.visibility = 'hidden';
+	measureDiv.style.position = 'absolute';
+	measureDiv.style.left = 0;
+	measureDiv.style.top = 0;
+	measureDiv.style.whiteSpace = 'pre';
+	measureDiv.style.float = 'left';
+	measureDivParent.appendChild(measureDiv);
 	
 	canvas = document.getElementById('canvas');
 	ctx = canvas.getContext('2d');
