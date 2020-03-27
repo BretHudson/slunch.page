@@ -2,6 +2,7 @@ Element.prototype.on = function(type, func, options) {
 	type.split(' ').forEach(t => this.addEventListener(t, func, options));
 };
 document.on = Element.prototype.on;
+window.on = Element.prototype.on;
 
 class V2 {
 	constructor(x = 0, y = 0) {
@@ -1037,7 +1038,7 @@ const loop = t => {
 	window.requestAnimationFrame(loop);
 };
 
-window.addEventListener('DOMContentLoaded', e => {
+window.on('DOMContentLoaded', e => {
 	hue = (new Date() / 10);
 	window.requestAnimationFrame(change);
 	
@@ -1068,10 +1069,10 @@ window.addEventListener('DOMContentLoaded', e => {
 	});
 	
 	const imageUpload = document.getElementById('image-upload');
-	imageUpload.addEventListener('change', e => readFile(e.target.files[0]), false);
+	imageUpload.on('change', e => readFile(e.target.files[0]), false);
 	
 	const button = document.querySelector('button');
-	button.addEventListener('click', e => {
+	button.on('click', e => {
 		const link = document.createElement('a');
 		link.download = 'slunch.jpg';
 		link.href = canvas.toDataURL("image/jpeg");
@@ -1104,4 +1105,4 @@ window.addEventListener('DOMContentLoaded', e => {
 	window.requestAnimationFrame(loop);
 });
 
-window.addEventListener('resize', resize);
+window.on('resize', resize);
