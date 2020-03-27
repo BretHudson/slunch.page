@@ -468,6 +468,20 @@ const addCanvasEvents = () => {
 		mouse.state = 1;
 	});
 	
+	document.on('keydown', e => {
+		switch (e.keyCode) {
+			case 37:
+			case 38:
+			case 39:
+			case 40: {
+				if (inputText === document.activeElement) {
+					e.preventDefault();
+					return false;
+				}
+			} break;
+		}
+	});
+	
 	inputText.on('focus', e => {
 		if (selectedItem !== undefined) {
 			switch (selectedItem.type) {
@@ -633,7 +647,7 @@ const createText = (str, x, y, size) => {
 			return this._str;
 		},
 		set str(value) {
-			this._str = value;
+			this._str = value.replace(/\t|\r\n|\n|\r/g, ' ');
 			this.transform._resize();
 		},
 		state: ITEM_STATES.NONE,
@@ -844,7 +858,6 @@ const updateStateItemSelected = dt => {
 	const { pos, rect, size, angle } = transform;
 	
 	{
-		console.log();
 		const offset = tempPos.set(0, -((rect.h * 0.5) + 50)).rotateDeg(angle);
 		const circlePos = tempPos2.setV2(pos).addV2(offset);
 		
