@@ -4,6 +4,10 @@ Element.prototype.on = function(type, func, options) {
 document.on = Element.prototype.on;
 window.on = Element.prototype.on;
 
+Array.prototype.remove = function(item) {
+	this.splice(this.indexOf(item), 1);
+};
+
 class V2 {
 	constructor(x = 0, y = 0) {
 		this.x = x;
@@ -334,6 +338,16 @@ const ITEM_STATES = strArrToObj([
 	'NUM'
 ]);
 
+const ITEMS = {
+	TEXT: 'text'
+};
+
+let customText;
+let selectedItem = null;
+const itemsInScene = [];
+const itemPool = {};
+Object.values(ITEMS).forEach(type => itemPool[type] = []);
+
 let appState = APP_STATES.NONE;
 
 let mainElem;
@@ -483,7 +497,7 @@ const addCanvasEvents = () => {
 	});
 	
 	inputText.on('focus', e => {
-		if (selectedItem !== undefined) {
+		if (selectedItem !== null) {
 			switch (selectedItem.type) {
 				case ITEMS.TEXT: {
 					
@@ -501,7 +515,7 @@ const addCanvasEvents = () => {
 	});
 	
 	inputText.on('blur', e => {
-		if (selectedItem !== undefined) {
+		if (selectedItem !== null) {
 			switch (selectedItem.type) {
 				case ITEMS.TEXT: {
 					inputText.focus();
@@ -612,10 +626,6 @@ const drawTextItem = textObj => {
 	}
 };
 
-const ITEMS = {
-	TEXT: 'text'
-};
-
 const getSizeOfStr = (str, size) => {
 	if (str.length > 0) {
 		measureDiv.textContent = str;
@@ -639,7 +649,7 @@ const getSizeOfStr = (str, size) => {
 };
 
 const HEIGHT_TO_SIZE = 1 / 1.54;
-const createText = (str, x, y, size) => {
+const _createText = (str, x, y, size) => {
 	const text = {
 		type: ITEMS.TEXT,
 		_str: str,
@@ -719,9 +729,29 @@ const createText = (str, x, y, size) => {
 	return text;
 };
 
-let customText;
-let selectedItem = null;
-const itemsInScene = [];
+const createText = (str, x, y, size) => {
+	const text = itemPool[ITEMS.TEXT].pop() || _createText(str, x, y, size);
+	
+	const { transform } = text;
+	
+	transform.rect.x = x;
+	transform.rect.y = y;
+	transform.size = size;
+	
+	text.str = str;
+	
+	return text;
+};
+
+const addToScene = item => {
+	itemsInScene.push(item);
+};
+
+const removeFromScene = item => {
+	itemsInScene.remove(item);
+	
+	itemPool[item.type].push(item);
+};
 
 const selectItem = item => {
 	selectedItem = item;
@@ -730,7 +760,7 @@ const selectItem = item => {
 		case ITEMS.TEXT: {
 			inputText.focus();
 			inputText.value = selectedItem.str;
-		}
+		} break;
 	}
 	
 	selectedItem.state = ITEM_STATES.SELECTED;
@@ -742,6 +772,16 @@ const deselectItem = () => {
 	appState = APP_STATES.NONE;
 	
 	selectedItem.state = ITEM_STATES.NONE;
+	
+	switch (selectedItem.type) {
+		case ITEMS.TEXT: {
+			if (selectedItem.str.length === 0) {
+				removeFromScene(selectedItem);
+			}
+		} break;
+	}
+	
+	selectedItem = null;
 };
 
 let lastRender;
@@ -895,7 +935,7 @@ const updateStateItemSelected = dt => {
 			selectedItem.state = ITEM_STATES.MOVING;
 		} else {
 			deselectItem();
-			// TODO(bret): Check if size is 0; if so, remove from the scene!
+			return;
 		}
 	}
 	
@@ -913,6 +953,7 @@ const updateStateItemSelected = dt => {
 			} break;
 			
 			case ITEM_STATES.ROTATING: {
+				// TODO(bret): Should we snap to 90 angles?
 				selectedTransform.delta.angle = selectedItem.transform.rect.pos.compareAnglesDeg(mouse.pos);
 			} break;
 			
@@ -950,7 +991,7 @@ const updateEnd = dt => {
 	mouse.state &= ~1;
 };
 
-const DEBUG_RENDER_IMAGES = true;
+const DEBUG_RENDER_IMAGES = false;
 const DEBUG_RENDER_PROJECTION = false;
 const render = dt => {
 	Draw.rect(0, 0, canvasSize.x, canvasSize.y, 'black', {
@@ -1121,10 +1162,10 @@ window.on('DOMContentLoaded', e => {
 	customText = createText('Yay', 0, 0, 100);
 	customText.transform.angle = 0;
 	
-	// itemsInScene.push(text1, text2, customText);
-	// itemsInScene.push(text1, text2);
-	// itemsInScene.push(text1);
-	itemsInScene.push(customText);
+	// addToScene(text1, text2, customText);
+	// addToScene(text1, text2);
+	// addToScene(text1);
+	addToScene(customText);
 	
 	selectItem(customText);
 	
